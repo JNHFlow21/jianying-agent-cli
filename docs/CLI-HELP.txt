@@ -937,8 +937,8 @@ positional arguments:
     search         search catalog entries by Chinese name or id
     cached         list materials actually downloaded in the local 剪映 cache,
                    by name
-    search-remote  search all materials 剪映's cached listings know (cached +
-                   downloadable)
+    search-remote  search 剪映's live material catalog (+ cached listings as
+                   fallback)
     fetch          download a 剪映 material package into 剪映's local cache
     params         show legal parameter namespaces and their ranges
 
@@ -964,31 +964,34 @@ options:
 
 ## jy effects search-remote
 
-usage: jy effects search-remote [-h] [--kind KIND] [--limit N] KEYWORD
+usage: jy effects search-remote [-h] [--offline] [--kind KIND] [--limit N]
+                                KEYWORD
 
-只读：在剪映缓存的面板列表（ressdk_db 副本）里按名字搜素材，含尚未下载的；每条带 status
-cached|remote、vip、downloadable。列表只覆盖剪映加载过的面板。
+只读：在剪映在线素材目录（转场/滤镜/特效/花字/文字动画/贴纸，关键词搜索 + 面板列表，面板缓存一天）里按名字搜素材，并合并本机剪映缓存的列表；每条带
+status cached|remote、source live|cache、vip、downloadable。--offline 只查本机缓存。
 
 positional arguments:
   KEYWORD
 
 options:
   -h, --help   show this help message and exit
+  --offline    cached listings only, no network
   --kind KIND  transition/filter/video_effect/text_effect/text_animation/…
   --limit N    0 = no limit
 
 ## jy effects fetch
 
-usage: jy effects fetch [-h] [--kind KIND] NAME|RESOURCE_ID
+usage: jy effects fetch [-h] [--offline] [--kind KIND] NAME|RESOURCE_ID
 
-按名字或 resource_id 下载素材包：地址取自剪映缓存的面板列表（字节 CDN），校验 md5，原子解压到
-Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。
+按名字或 resource_id 下载素材包：先查剪映在线素材目录（id 还会查 Artist），再回退本机缓存的列表；从返回的字节 CDN 地址下载，校验
+md5，原子解压到 Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。
 
 positional arguments:
   NAME|RESOURCE_ID
 
 options:
   -h, --help        show this help message and exit
+  --offline         resolve from cached listings only
   --kind KIND       disambiguate a name shared by several kinds
 
 ## jy material

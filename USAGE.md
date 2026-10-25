@@ -107,8 +107,8 @@ git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-age
 | `jy render DIR -o out.mp4 [--async] [--on-entitlement fail\|local] [--preflight] [--focus-guard watch\|restore\|off]` | 调剪映原生导出器渲染草稿；带焦点守卫、冷启动重试、崩溃重发现、跨进程渲染锁 |
 | `jy effects list\|search\|params` | 剪映素材目录（内置 269 条：id / 中文名 / 类型 / 参数；可用 ~/.config/jy/effects_catalog.json 覆盖） |
 | `jy effects cached [--kind K] [--search NAME] [--limit N] [--refresh]` | **本机剪映缓存里真正已下载、能渲染的素材**：kind / 中文名 / resource_id / `status:"cached"` / 可直接粘进 spec 的片段（见 §9.2） |
-| `jy effects search-remote KEYWORD [--kind K] [--limit N]` | 搜剪映已知的全部素材（含未下载）：`status cached\|remote`、`vip`、`downloadable`（见 §9.3） |
-| `jy effects fetch NAME\|RESOURCE_ID [--kind K]` | 把素材包下载进剪映缓存（md5 校验、原子解压、不覆盖已有包），之后 `cached` / 按名字解析都能用（见 §9.3） |
+| `jy effects search-remote KEYWORD [--kind K] [--limit N] [--offline]` | 搜剪映在线素材目录（+本机缓存列表回退）：`status cached\|remote`、`source live\|cache`、`vip`、`downloadable`（见 §9.3） |
+| `jy effects fetch NAME\|RESOURCE_ID [--kind K] [--offline]` | 把素材包下载进剪映缓存（md5 校验、原子解压、不覆盖已有包），之后 `cached` / 按名字解析都能用（见 §9.3） |
 | `jy material status` | 素材图能力自检：哪些类型已证明能渲染、哪些未验证、字体路径 |
 | `jy material register DIR [--apply]` | 把草稿注册进剪映草稿面板（默认 dry-run，自动备份索引） |
 
@@ -253,28 +253,34 @@ jy render draft/ -o out.mp4 --async && jy jobs wait <id>   # 长任务
 
 ### 9.3 搜索与下载素材（`jy effects search-remote` / `jy effects fetch` / `draft build --fetch`）
 
-剪映缓存的面板列表里不只有已下载的素材，还记着它见过的所有素材（本机约 8900 条：名字、类型、md5、
-剪映自己用的字节 CDN 下载地址）。
+`search-remote` 查的是**剪映的在线素材目录**（与剪映 App 同一套接口）：转场（`transitions`，约 590）、
+滤镜（`filter`，约 330）、画面特效（`effects`）、花字（`flower`，约 556）、文字动画（`text`，约 456）、贴纸（`sticker`）；
+关键词搜索 + 面板列表合并，并且合并本机剪映缓存的列表作为回退（离线、接口不可用时）。
 
 ```bash
-jy effects search-remote 推近 --kind transition      # status: remote（可下载）/ cached
-jy effects fetch 推近 --kind transition              # 下载 → Cache/effect/<resource_id>/<md5>/
-jy draft build --spec spec.json -o d --fetch         # spec 里按名字引用、未缓存的素材自动下载
+jy effects search-remote 烟雾 --kind transition       # source: live|cache，status: remote|cached，vip
+jy effects search-remote 烟雾 --offline               # 只查本机缓存的列表，不联网
+jy effects fetch 烟雾转场 --kind transition           # 下载 → Cache/effect/<resource_id>/<md5>/
+jy effects fetch 7202575978646737469                 # 按 id：先查在线面板，再查 Artist 单条接口
+jy draft build --spec spec.json -o d --fetch          # spec 里按名字引用、未缓存的素材自动下载
 ```
 
-- **怎么下载的**：只用列表里剪映自己的 CDN 地址做普通 HTTPS GET（主机白名单：字节 CDN），不带 cookie、token、设备号，
-  不读账号数据；下载后校验 md5，安全解压（拒绝 `..`/绝对路径），先解到同目录临时文件夹再原子改名为
-  `<resource_id>/<md5>/`，并写 `<md5>_modity_time.txt`。已存在的包**不覆盖**（`outcome:"noop"`）。
-  Artist 系素材（`publish_source` 为 `user_post*`）放 `artistEffect/`，其余放 `effect/`。
-- **结果**：`data.fetched/md5/bytes/files/cache_dir/path` + 可粘贴的 `spec`；之后 `jy effects cached` 会列出它，`draft build` 能按名字解析。
+- **在线接口**：Loki 目录 `lv-effect.ulikecam.com`（面板 `/effect/api/v3/effects`、搜索 `/effect/api/search/effects`），
+  按 id 查 Artist `lv-api.ulikecam.com/artist/v1/effect/mget_artist_item`（带剪映客户端同样的 md5 `sign` 头）。
+  参数是**剪映发行版 App 的公开客户端标识**（`jy_cli/jianying_live.py`，与每份剪映安装包里的相同），不是用户凭据；
+  jy 只发一个**随机生成**的 19 位 `device_id`/`iid`（首次使用时写入 `~/.config/jy/device.json`），不读剪映的真实设备号、
+  cookie、token 或账号数据。请求串行、超时 12 s，面板列表在 `~/.cache/jy/live/` 缓存一天。`$JY_LIVE_OFFLINE=1` 全局关闭联网。
+- **怎么下载的**：用接口返回的字节 CDN 地址做普通 HTTPS GET（主机白名单），下载后校验 md5，安全解压（拒绝 `..`/绝对路径），
+  先解到同目录临时文件夹再原子改名为 `<resource_id>/<md5>/`，并写 `<md5>_modity_time.txt`。已存在的包**不覆盖**（`outcome:"noop"`）。
+  Loki 素材放 `effect/`，Artist 素材放 `artistEffect/`（与剪映一致）。下载过的素材名字记在 `~/.config/jy/fetched_materials.json`，
+  所以 `jy effects cached` 和 `draft build` 能按名字找到它。
+- **结果**：`data.fetched/md5/bytes/files/cache_dir/path/source` + 可粘贴的 `spec`。
 - **会员素材**：`vip:true` 照样能下载，但非会员账号导出时剪映可能拒绝（`jy render` 报 `BLOCKED`）；jy 只如实标注，不绕过。
-- **失败**：网络错误 → `UNAVAILABLE`（`retriable:true`）；CDN 401/403 → `BLOCKED`；md5 不符/非白名单主机/列表里没有下载地址 →
-  `UNAVAILABLE`/`UNSUPPORTED`（`retriable:false`）；签名地址过期 → `UNAVAILABLE`，提示在剪映里打开一次对应面板刷新列表。
+- **失败**：在线目录不可用 → 自动回退本机缓存的列表并给出 warning；下载网络错误 → `UNAVAILABLE`（`retriable:true`）；CDN 401/403 →
+  `BLOCKED`；md5 不符/非白名单主机/没有下载地址 → `UNAVAILABLE`/`UNSUPPORTED`（`retriable:false`）；签名地址过期 → `UNAVAILABLE`。
   `details.attempts[]` 逐个列出尝试过的地址和原因。
-- **范围限制**：只能搜到剪映**加载过的面板**里的素材（列表随你使用剪映而更新）。剪映的在线素材接口没有直接调用：
-  Loki 接口拒绝公开 app key（`access_key does not exist`），Artist 接口需要请求签名，jy 不复刻。
-- 实机验证（剪映 11.6，2026-10-25）：下载 `推近`（转场）、`梦幻渐变紫边白色发光花字`（花字）、`扫光`（文字动画，经 `--fetch`），
-  `draft build` + `jy render` 剪映引擎出片，逐帧可见推近转场、花字描边和扫光。
+- 实机验证（剪映 11.6，2026-10-25）：在线搜索并下载 `滚动立方`（会员转场）、`推近`，以及 `梦幻渐变紫边白色发光花字`（花字）、
+  `扫光`（文字动画，经 `--fetch`），`draft build` + `jy render` 剪映引擎出片，逐帧可见。
 
 ## 10. 工程管理
 

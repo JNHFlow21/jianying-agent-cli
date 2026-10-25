@@ -122,8 +122,9 @@ Material names are 剪映's Chinese names; search with short keywords.
   `--on-entitlement local` re-renders with local approximations and lists every loss in
   `data.degraded_items[]` — only with the user's consent, and tell them. `jy` never bypasses membership.
 - **Downloads**: `effects fetch` network errors are `UNAVAILABLE` (retriable); CDN 401/403 → `BLOCKED`;
-  md5 mismatch or an expired URL → pick a similar material. `search-remote` covers the panels 剪映 has
-  cached; if nothing matches, try a synonym or a similar material.
+  md5 mismatch or an expired URL → pick a similar material. `search-remote` queries 剪映's live catalog
+  (`source: live`) and falls back to the locally cached listings (`source: cache`, or `--offline`) with a
+  warning when the catalog is unreachable; if nothing matches, try a synonym or a similar material.
 - **One render at a time**: a cross-process lock serialises renders; never render in parallel.
 - After 剪映 opens a `jy` draft it may migrate it to a multi-timeline layout (`Timelines/<uuid>/`);
   `jy` resolves that automatically.

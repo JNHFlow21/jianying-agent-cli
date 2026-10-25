@@ -160,7 +160,8 @@ def effects_cached(ctx, args):
 def _public(row, with_spec):
     from .. import jianying_cache
 
-    item = {key: row.get(key) for key in ("kind", "name", "resource_id", "status", "category", "vip")}
+    item = {key: row.get(key) for key in ("kind", "name", "resource_id", "status", "source",
+                                         "category", "vip")}
     if row.get("animation_type"):
         item["animation_type"] = row["animation_type"]
     if "downloadable" in row:
@@ -174,21 +175,22 @@ def effects_search_remote(ctx, args):
     """Search every material 剪映's cached panel listings know, downloaded or not."""
     from .. import jianying_cache
 
-    data, rows = jianying_cache.search_known(args.keyword, kind=args.kind, limit=args.limit)
+    data, rows = jianying_cache.search_known(args.keyword, kind=args.kind, limit=args.limit,
+                                             offline=bool(args.offline), warnings=ctx.warnings)
     if not rows:
         raise JyError(
             "NOT_FOUND",
-            f"剪映缓存的素材列表里没有匹配 {args.keyword!r} 的素材；在剪映里浏览一次对应面板可刷新列表",
+            f"剪映素材目录里没有匹配 {args.keyword!r} 的素材；换个关键词或去掉 --kind",
             details={"keyword": args.keyword, "kind": args.kind},
         )
     return "readonly", {
         "cache_root": data["cache_root"],
-        "known": len(data["catalog"]),
         "returned": len(rows),
         "items": [_public(row, with_spec=False) for row in rows],
-        "source": "剪映 cached panel listings (Cache/ressdk_db http_cache, read from a copy)",
-        "note": "status=remote 的素材可用 `jy effects fetch <名字|resource_id>` 下载；"
-        "vip=true 需要剪映会员才能导出。列表只包含剪映曾经加载过的面板。",
+        "sources": sorted({row["source"] for row in rows}),
+        "note": "source=live 来自剪映在线素材目录（搜索 + 面板列表），source=cache 来自本机剪映缓存的列表"
+        "（离线/在线不可用时的回退）。status=remote 的素材可用 `jy effects fetch <名字|resource_id>` 下载；"
+        "vip=true 需要剪映会员才能导出。",
     }
 
 
@@ -196,7 +198,8 @@ def effects_fetch(ctx, args):
     """Download one material package into 剪映's cache layout."""
     from .. import jianying_cache
 
-    row = jianying_cache.fetch_material(args.target, kind=args.kind)
+    row = jianying_cache.fetch_material(args.target, kind=args.kind, offline=bool(args.offline),
+                                        warnings=ctx.warnings)
     item = _public(row, with_spec=True)
     for key in ("fetched", "reason", "md5", "bytes", "files", "cache_dir"):
         if key in row:
@@ -258,10 +261,12 @@ def register(r):
     r.bind(cached, "effects cached", effects_cached)
 
     remote = effects_sub.add_parser(
-        "search-remote", help="search all materials 剪映's cached listings know (cached + downloadable)",
-        description="只读：在剪映缓存的面板列表（ressdk_db 副本）里按名字搜素材，含尚未下载的；"
-        "每条带 status cached|remote、vip、downloadable。列表只覆盖剪映加载过的面板。",
+        "search-remote", help="search 剪映's live material catalog (+ cached listings as fallback)",
+        description="只读：在剪映在线素材目录（转场/滤镜/特效/花字/文字动画/贴纸，关键词搜索 + 面板列表，"
+        "面板缓存一天）里按名字搜素材，并合并本机剪映缓存的列表；每条带 status cached|remote、"
+        "source live|cache、vip、downloadable。--offline 只查本机缓存。",
     )
+    remote.add_argument("--offline", action="store_true", help="cached listings only, no network")
     remote.add_argument("keyword", metavar="KEYWORD")
     remote.add_argument("--kind", metavar="KIND",
                         help="transition/filter/video_effect/text_effect/text_animation/…")
@@ -270,9 +275,11 @@ def register(r):
 
     fetch = effects_sub.add_parser(
         "fetch", help="download a 剪映 material package into 剪映's local cache",
-        description="按名字或 resource_id 下载素材包：地址取自剪映缓存的面板列表（字节 CDN），"
-        "校验 md5，原子解压到 Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。",
+        description="按名字或 resource_id 下载素材包：先查剪映在线素材目录（id 还会查 Artist），"
+        "再回退本机缓存的列表；从返回的字节 CDN 地址下载，校验 md5，原子解压到 "
+        "Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。",
     )
+    fetch.add_argument("--offline", action="store_true", help="resolve from cached listings only")
     fetch.add_argument("target", metavar="NAME|RESOURCE_ID")
     fetch.add_argument("--kind", metavar="KIND", help="disambiguate a name shared by several kinds")
     r.bind(fetch, "effects fetch", effects_fetch)

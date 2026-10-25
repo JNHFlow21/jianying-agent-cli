@@ -164,13 +164,18 @@ def _catalog_from_copies(dbs):
     return catalog
 
 
+def _kind(meta):
+    return meta.get("kind") or EFFECT_TYPES.get(meta.get("effect_type"), "other")
+
+
 def _row(rid, meta, status, path=None):
-    kind = EFFECT_TYPES.get(meta["effect_type"], "other")
+    kind = _kind(meta)
     row = {"kind": kind, "name": meta["name"], "resource_id": rid, "status": status,
-           "path": path, "category": meta["category"], "vip": meta["vip"],
-           "effect_type": meta["effect_type"]}
+           "path": path, "category": meta.get("category") or "", "vip": meta.get("vip"),
+           "effect_type": meta.get("effect_type"), "source": meta.get("source") or "cache"}
     if kind == "text_animation":
-        row["animation_type"] = ANIMATION_TYPES.get(meta["category"], "in")
+        row["animation_type"] = (meta.get("animation_type")
+                                 or ANIMATION_TYPES.get(row["category"]) or "in")
     return row
 
 
@@ -184,6 +189,20 @@ def _require_root():
             details={"cache_root": str(root)},
         )
     return root
+
+
+def _fetched_path():
+    """Names/metadata of packages jy fetched (剪映's own listings may not mention them)."""
+    from .jianying_live import _config_dir
+    return _config_dir() / "fetched_materials.json"
+
+
+def _fetched():
+    try:
+        data = json.loads(_fetched_path().read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _memo_path():
@@ -200,7 +219,7 @@ def index(*, refresh=False):
     root = _require_root()
     packages = _packages(root)
     dbs = _databases(root)
-    fingerprint = _fingerprint(root, dbs)
+    fingerprint = _fingerprint(root, list(dbs) + [_fetched_path()])
     memo = _memo_path()
     if not refresh:
         try:
@@ -210,6 +229,8 @@ def index(*, refresh=False):
         except (OSError, ValueError):
             pass
     catalog = _catalog_from_copies(dbs)
+    for rid, meta in _fetched().items():
+        catalog.setdefault(rid, meta)
     items = [_row(rid, catalog[rid], "cached", path)
              for rid, path in packages.items() if rid in catalog]
     items.sort(key=lambda it: (it["kind"], it["name"], it["resource_id"]))
@@ -235,22 +256,51 @@ def require_packages(data):
         )
 
 
-def search_known(keyword, *, kind=None, limit=20):
-    """Materials 剪映's cached listings know about, each marked cached|remote."""
+def _live_or_none(call, warnings):
+    """Run a live-catalog call; on failure record why and return None (cache fallback)."""
+    from . import jianying_live
+    if jianying_live.offline():
+        return None
+    try:
+        return call(jianying_live)
+    except JyError as exc:
+        if warnings is not None:
+            warnings.append(f"剪映在线素材目录不可用，已回退到本机缓存的列表：{exc.message}")
+        return None
+
+
+def search_known(keyword, *, kind=None, limit=20, offline=False, warnings=None):
+    """剪映's live catalog (search + panels) merged with the cached listings; cached|remote."""
     data = index()
     cached = set(data.get("cached_ids") or [])
     needle = str(keyword or "").strip().lower()
-    rows = []
+    merged = {}
+    if not offline:
+        live = _live_or_none(lambda L: L.search(str(keyword).strip(), kind, limit), warnings)
+        merged.update(live or {})
     for rid, meta in data["catalog"].items():
+        merged.setdefault(rid, meta)
+    rows = []
+    for rid, meta in merged.items():
         if needle and needle not in meta["name"].lower() and needle != rid:
             continue
         row = _row(rid, meta, "cached" if rid in cached else "remote")
         if kind and row["kind"] != kind:
             continue
-        row["downloadable"] = bool(meta["urls"] and meta["md5"])
+        row["downloadable"] = bool(meta.get("urls") and meta.get("md5"))
+        if rid in cached:
+            row["path"] = _packages_cached_path(data, rid)
         rows.append(row)
-    rows.sort(key=lambda r: (r["name"].lower() != needle, r["status"] != "cached", r["kind"], r["name"]))
+    rows.sort(key=lambda r: (r["name"].lower() != needle, r["status"] != "cached",
+                             r["source"] != "live", r["kind"], r["name"]))
     return data, rows[:limit] if limit else rows
+
+
+def _packages_cached_path(data, rid):
+    for item in data["items"]:
+        if item["resource_id"] == rid:
+            return item["path"]
+    return None
 
 
 def spec_snippet(item):
@@ -372,7 +422,7 @@ def resolve_spec(spec, *, fetch=False):
 # --------------------------------------------------------------------------- #
 
 # CDN hosts 剪映's listings use for effect packages (ByteDance object storage).
-ALLOWED_HOST_SUFFIXES = (".bytecdn.com", ".byteimg.com", ".byteeffecttos-g.com", ".ibytedtos.com",
+ALLOWED_HOST_SUFFIXES = (".bytecdn.com", ".byteimg.com", ".byteeffecttos-g.com", ".byteeffecttos.com", ".ibytedtos.com",
                          ".bytetos.com", ".capcutstatic.com", ".vlabstatic.com",
                          ".draftstatic.com", ".pstatp.com", ".zjcdn.com", ".snssdk.com")
 LOOPBACK_ENV = "JY_FETCH_ALLOW_LOOPBACK"  # tests only: allow http://127.0.0.1 mock servers
@@ -397,7 +447,9 @@ def _expired(url):
 
 def _target_dir(meta):
     """effect/ for Loki/Vimo packages, artistEffect/ for Artist (user_post*) and text glow/stroke."""
-    if meta["publish_source"].startswith("user_post") or meta["effect_type"] in (28, 29):
+    if meta.get("cache_dir") in PACKAGE_DIRS:
+        return meta["cache_dir"]
+    if meta.get("publish_source", "").startswith("user_post") or meta["effect_type"] in (28, 29):
         return "artistEffect"
     return "effect"
 
@@ -471,51 +523,72 @@ def _safe_extract(blob, dest):
     return names
 
 
-def resolve_target(target, kind=None):
-    """(resource_id, listing record) for a name or id, from 剪映's cached listings."""
+def resolve_target(target, kind=None, *, offline=False, warnings=None):
+    """(resource_id, record) for a name or id: 剪映's live catalog first, cached listings second."""
     data = index()
     catalog = data["catalog"]
     key = str(target).strip()
     if key.isdigit():
-        meta = catalog.get(key)
+        meta = None if offline else _live_or_none(lambda L: L.lookup_id(key), warnings)
+        meta = meta or catalog.get(key)
         if meta is None:
-            raise JyError("NOT_FOUND", f"剪映缓存的素材列表里没有 resource_id {key}",
+            raise JyError("NOT_FOUND", f"剪映素材目录里没有 resource_id {key}",
                           details={"resource_id": key})
         return key, meta
-    rows = [(rid, m) for rid, m in catalog.items() if m["name"] == key
-            and (not kind or EFFECT_TYPES.get(m["effect_type"], "other") == kind)]
+    pool = {}
+    if not offline:
+        pool.update(_live_or_none(lambda L: L.search(key, kind, 50), warnings) or {})
+    for rid, meta in catalog.items():
+        pool.setdefault(rid, meta)
+    rows = [(rid, m) for rid, m in pool.items()
+            if m["name"] == key and (not kind or _kind(m) == kind)]
     if not rows:
-        near = [m["name"] for rid, m in catalog.items() if key.lower() in m["name"].lower()
-                and (not kind or EFFECT_TYPES.get(m["effect_type"], "other") == kind)][:10]
+        near = [m["name"] for m in pool.values()
+                if key.lower() in m["name"].lower() and (not kind or _kind(m) == kind)][:10]
         raise JyError(
             "NOT_FOUND",
-            f"剪映缓存的素材列表里没有名为「{key}」的{kind or '素材'}"
+            f"剪映素材目录里没有名为「{key}」的{kind or '素材'}"
             + (f"；相近的：{'、'.join(near)}" if near else "；用 `jy effects search-remote <关键词>` 查找"),
             details={"name": key, "kind": kind, "similar": near},
         )
-    if len(rows) > 1:
+    ids = {rid for rid, _ in rows}
+    if len(ids) > 1:
         raise JyError(
             "VALIDATION",
             f"「{key}」对应多个素材，请加 --kind 或改用 resource_id：" + "、".join(
-                f"{rid}({EFFECT_TYPES.get(m['effect_type'], 'other')})" for rid, m in rows),
-            details={"candidates": [{"resource_id": rid,
-                                     "kind": EFFECT_TYPES.get(m["effect_type"], "other")}
-                                    for rid, m in rows]},
+                f"{rid}({_kind(m)})" for rid, m in rows),
+            details={"candidates": [{"resource_id": rid, "kind": _kind(m)} for rid, m in rows]},
         )
-    return rows[0]
+    live_first = sorted(rows, key=lambda r: r[1].get("source") != "live")
+    return live_first[0]
 
 
-def fetch_material(target, *, kind=None):
+def _remember(rid, meta):
+    fetched = _fetched()
+    fetched[rid] = {key: meta.get(key) for key in ("name", "kind", "effect_type", "category", "vip",
+                                                    "md5", "publish_source", "cache_dir",
+                                                    "animation_type")}
+    fetched[rid].update(urls=[], source="fetched")
+    try:
+        _fetched_path().parent.mkdir(parents=True, exist_ok=True)
+        _fetched_path().write_text(json.dumps(fetched, ensure_ascii=False, indent=1), "utf-8")
+    except OSError:
+        pass
+
+
+def fetch_material(target, *, kind=None, offline=False, warnings=None):
     """Download one package into ``<cache>/<effect|artistEffect>/<rid>/<md5>/`` (atomic, no overwrite)."""
-    rid, meta = resolve_target(target, kind)
+    rid, meta = resolve_target(target, kind, offline=offline, warnings=warnings)
     root = _require_root()
     row = _row(rid, meta, "cached")
     existing = _packages(root).get(rid)
     if existing:
+        if rid not in index()["catalog"]:
+            _remember(rid, meta)
         row.update(path=existing, fetched=False, reason="already cached")
         return row
     md5 = meta["md5"]
-    if not (meta["urls"] and re.fullmatch(r"[0-9a-f]{32}", md5 or "")):
+    if not (meta.get("urls") and re.fullmatch(r"[0-9a-f]{32}", md5 or "")):
         raise JyError("UNSUPPORTED", f"「{meta['name']}」在剪映缓存的列表里没有下载地址/md5，无法下载",
                       details={"resource_id": rid})
     blob, attempts = _download(meta["urls"], md5)
@@ -536,6 +609,7 @@ def fetch_material(target, *, kind=None):
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
+    _remember(rid, meta)
     try:
         _memo_path().unlink()
     except OSError:

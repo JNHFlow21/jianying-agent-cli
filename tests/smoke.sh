@@ -27,6 +27,8 @@ FP="${FFPROBE_FULL}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jy-smoke.XXXXXX")"
 export JY_CACHE_DIR="$WORK/cache"
 export JY_STAGING_DIR="$WORK/staging"
+export JY_CONFIG_DIR="$WORK/config"   # synthetic device id + fetched-material names stay in the temp dir
+export JY_LIVE_OFFLINE=1              # no live 剪映 catalog calls unless a test opts in
 OUTDIR="$WORK/out dir"          # spaces test argv + filter path escaping
 OUT="$WORK/envelope.json"
 ERR="$WORK/stderr.log"
@@ -2306,6 +2308,90 @@ check("uncached name without --fetch NOT_FOUND", (payload.get("error") or {}).ge
 payload = run(["draft", "build", "--spec", "fetch.json", "-o", "fdraft", "--no-staging", "--force", "--fetch"], env=fenv, cwd=spec_dir)
 fetched = [r for r in (payload.get("data") or {}).get("materials_resolved") or [] if r.get("fetched")]
 check("draft build --fetch downloads", payload.get("ok") is True and len(fetched) == 1, str(payload.get("error") or payload.get("data", {}).get("materials_resolved"))[:300])
+
+# --- live catalog client against a mock Loki + Artist server ---
+import urllib.parse
+live_blob = make_zip({"config.json": "{\"live\":1}"})
+live_md5 = hashlib.md5(live_blob).hexdigest()
+art_blob = make_zip({"config.json": "{\"artist\":1}"})
+art_md5 = hashlib.md5(art_blob).hexdigest()
+blobs[f"/{live_md5}"] = live_blob
+blobs[f"/{art_md5}"] = art_blob
+seen = {"sign_ok": None, "params": None}
+
+
+def loki_effect(rid, name, md5):
+    return {"name": name, "id": md5, "effect_id": rid[-6:], "resource_id": rid,
+            "file_url": {"uri": md5, "url_list": [f"{base}/{md5}"]}, "extra": "{\"is_vip\":true}",
+            "effect_type": 0}
+
+
+class LiveMock(Mock):
+    def do_GET(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        q = dict(urllib.parse.parse_qsl(parsed.query))
+        if parsed.path.startswith("/effect/api/"):
+            seen["params"] = q
+            if q.get("aid") != "1059" or not q.get("device_id", "").isdigit():
+                return self._json({"status_code": 2009, "message": "access_key does not exist"})
+            effects = [loki_effect("7200000000000000001", "直播转场", live_md5)] if q.get("panel") == "transitions" else []
+            if parsed.path.endswith("/search/effects") and q.get("keyword") not in ("直播", "直播转场"):
+                effects = []
+            return self._json({"status_code": 0, "data": {"effects": effects, "category": [
+                {"name": "热门", "effects": [e["effect_id"] for e in effects]}]}})
+        return super().do_GET()
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+        dev, ts = self.headers.get("tdid"), self.headers.get("device-time")
+        want = hashlib.md5(f"9e2c|{body}|mac|11.7.0|{ts}|{dev}|11ac".encode()).hexdigest()  # gitleaks:allow
+        seen["sign_ok"] = self.headers.get("sign") == want
+        if not seen["sign_ok"]:
+            return self._json({"ret": "1", "errmsg": "bad sign"})
+        ids = json.loads(body)["id_list"]
+        return self._json({"ret": "0", "data": {"effect_item_list": [{"common_attr": {
+            "id": i, "effect_id": i, "title": "艺术轮廓", "effect_type": 29, "md5": art_md5,
+            "item_urls": [f"{base}/{art_md5}"], "business_info": {"json_str": "{\"is_vip\":false}"}}} for i in ids]}})
+
+    def _json(self, obj):
+        raw = json.dumps(obj, ensure_ascii=False).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+
+
+server.shutdown()
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), LiveMock)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+base = f"http://127.0.0.1:{server.server_address[1]}"
+lenv = dict(fenv, JY_LIVE_BASE=base, JY_CACHE_DIR=str(WORK / "live-cache-dir"))
+lenv.pop("JY_LIVE_OFFLINE", None)
+payload = run(["effects", "search-remote", "直播", "--kind", "transition"], env=lenv)
+rows = (payload.get("data") or {}).get("items") or []
+check("live search-remote ok", payload.get("ok") is True and rows and rows[0].get("source") == "live"
+      and rows[0].get("status") == "remote" and rows[0].get("vip") is True, str(payload)[:300])
+check("live uses public client params + synthetic device id",
+      (seen["params"] or {}).get("access_key") == "0051d530508b11e9b441ed975323ebf8"  # gitleaks:allow
+      and len((seen["params"] or {}).get("device_id", "")) == 19, str(seen["params"])[:200])
+dev = json.loads((WORK / "config" / "device.json").read_text("utf-8"))
+payload = run(["effects", "search-remote", "直播", "--kind", "transition"], env=lenv)
+check("device id is stable", (seen["params"] or {}).get("device_id") == dev["device_id"], "")
+payload = run(["effects", "search-remote", "直播", "--kind", "transition", "--offline"], env=lenv)
+check("--offline skips live", (payload.get("error") or {}).get("code") == "NOT_FOUND", str(payload)[:200])
+payload = run(["effects", "fetch", "直播转场", "--kind", "transition"], env=lenv)
+data = payload.get("data") or {}
+check("live fetch executed", payload.get("outcome") == "executed" and data.get("cache_dir") == "effect"
+      and (root / "effect" / "7200000000000000001" / live_md5 / "config.json").is_file(), str(payload)[:300])
+payload = run(["effects", "cached", "--kind", "transition", "--limit", "0"], env=lenv)
+check("live-fetched name in cached", "直播转场" in [i["name"] for i in (payload.get("data") or {}).get("items") or []],
+      str(payload.get("data"))[:300])
+payload = run(["effects", "fetch", "7300000000000000029"], env=lenv)
+data = payload.get("data") or {}
+check("artist mget signed + fetched to artistEffect", seen["sign_ok"] is True and data.get("cache_dir") == "artistEffect"
+      and (root / "artistEffect" / "7300000000000000029" / art_md5 / "config.json").is_file(), str(payload)[:300])
+denv = dict(lenv, JY_LIVE_BASE="http://127.0.0.1:9")
+payload = run(["effects", "search-remote", "测试推近"], env=denv)
+check("live down falls back to cache", payload.get("ok") is True and any("回退" in w for w in payload.get("warnings") or []),
+      str(payload)[:300])
 server.shutdown()
 
 print(json.dumps({"ok": not failures, "failures": failures}, ensure_ascii=False))
@@ -2320,10 +2406,16 @@ if [[ "${JY_LIVE_FETCH:-}" == "1" && -d "$HOME/Movies/JianyingPro/User Data/Cach
     # live CDN fetch into a COPY of the listings, never into the real 剪映 cache
     LIVE="$WORK/live-cache"; mkdir -p "$LIVE/effect"
     cp -R "$HOME/Movies/JianyingPro/User Data/Cache/ressdk_db" "$LIVE/"
-    run_jy_env() { JY_JIANYING_CACHE="$LIVE" "$JY" "$@" > "$OUT" 2> "$ERR"; RC=$?; }
-    run_jy_env effects fetch 推近 --kind transition
-    if [[ $RC -eq 0 ]] && ls "$LIVE/effect/6724226861666144779/"*/config.json >/dev/null 2>&1; then
-        pass "live fetch 推近 from the CDN (JY_LIVE_FETCH=1)"
+    run_jy_env() { JY_LIVE_OFFLINE= JY_JIANYING_CACHE="$LIVE" "$JY" "$@" > "$OUT" 2> "$ERR"; RC=$?; }
+    run_jy_env effects search-remote 烟雾 --kind transition
+    if [[ $RC -eq 0 ]] && grep -q '"source": "live"' "$OUT"; then
+        pass "live search-remote 烟雾 (剪映 live catalog, JY_LIVE_FETCH=1)"
+    else
+        fail "live search-remote" "rc=$RC $(head -c 300 "$OUT")"
+    fi
+    run_jy_env effects fetch 烟雾转场 --kind transition
+    if [[ $RC -eq 0 ]] && ls "$LIVE/effect/7450031574923350555/"*/config.json >/dev/null 2>&1; then
+        pass "live fetch 烟雾转场 from the CDN (JY_LIVE_FETCH=1)"
     else
         fail "live fetch" "rc=$RC $(head -c 300 "$OUT")"
     fi
