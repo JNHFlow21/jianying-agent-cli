@@ -6,12 +6,12 @@
 
 裁剪、拼接、字幕、标题、转场、滤镜、抠图、音频、关键帧、批量导出——每次调用只输出一个 JSON 对象，Claude Code、Codex 或任何脚本都能直接驱动，不用开 GUI。
 
-[![test](https://github.com/JNHFlow21/jianying-agent-cli/actions/workflows/test.yml/badge.svg)](https://github.com/JNHFlow21/jianying-agent-cli/actions/workflows/test.yml)
+[![test](https://github.com/risingjerry/jianying-agent-cli/actions/workflows/test.yml/badge.svg)](https://github.com/risingjerry/jianying-agent-cli/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-D97757.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-6A9BCC.svg)
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
 ![No pip deps](https://img.shields.io/badge/deps-ffmpeg%20only-2ea44f.svg)
-[![GitHub stars](https://img.shields.io/github/stars/JNHFlow21/jianying-agent-cli?style=social)](https://github.com/JNHFlow21/jianying-agent-cli/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/risingjerry/jianying-agent-cli?style=social)](https://github.com/risingjerry/jianying-agent-cli/stargazers)
 
 [English](README.md) · 简体中文
 
@@ -35,7 +35,7 @@
 ## 安装
 
 ```sh
-git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-agent-cli && python3 install_global.py
+git clone https://github.com/risingjerry/jianying-agent-cli.git && cd jianying-agent-cli && python3 install_global.py
 ```
 
 需要 Python 3.9+ 和 ffmpeg。推荐 `brew install ffmpeg-full`（带 libass 字幕、x264/x265、zimg）；普通 `ffmpeg` 也能用，缺的能力会明确报出来，不会假装支持。安装器把 `jy` 软链到 `~/.local/bin`（那里已有的非 `jy` 文件会先改名为 `jy.bak-<时间>`，不会删除）。然后：
@@ -72,7 +72,7 @@ jy frame final.mp4 --at 50% -o check.jpg               # 交付前抽帧看一�
 ```sh
 python3 install_global.py --with-skill     # 把 skill 复制到 ~/.claude/skills 和 ~/.agents/skills（已有的先备份）
 # 或者用 skills 命令行：
-npx skills add JNHFlow21/jianying-agent-cli
+npx skills add risingjerry/jianying-agent-cli
 # 或者手动复制：
 cp -r skills/jianying-native ~/.claude/skills/     # Claude Code
 cp -r skills/jianying-native ~/.agents/skills/     # Codex 等支持 Agent Skills 的工具
@@ -175,6 +175,6 @@ python3 docs/render_demo.py          # 重新生成 docs/demo.gif 和 demo.mp4�
 
 如果 `jy` 帮你省下了一下午查 ffmpeg 参数的时间，点个 ⭐ 能让更多人（和他们的 agent）找到它。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JNHFlow21/jianying-agent-cli&type=Date)](https://star-history.com/#JNHFlow21/jianying-agent-cli&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=risingjerry/jianying-agent-cli&type=Date)](https://star-history.com/#risingjerry/jianying-agent-cli&Date)
 
 [MIT](LICENSE)

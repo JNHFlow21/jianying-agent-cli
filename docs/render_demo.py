@@ -28,7 +28,7 @@ import time, urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FF = shutil.which("ffmpeg", path="/opt/homebrew/opt/ffmpeg-full/bin") or shutil.which("ffmpeg")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-UA = "jy-demo/1.0 (https://github.com/JNHFlow21/jianying-agent-cli)"
+UA = "jy-demo/1.0 (https://github.com/risingjerry/jianying-agent-cli)"
 
 # name -> (public-domain source URL, trim start s, trim duration s). Credits: docs/DEMO-CREDITS.md
 COMMONS = "https://upload.wikimedia.org/wikipedia/commons/"
