@@ -1,0 +1,48 @@
+# outputs / scratch
+outputs/
+out/
+.tmp/
+tmp/
+*.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# media & renders (never commit user content; docs/demo.gif is the only exception)
+*.mp4
+*.mov
+*.m4v
+*.mkv
+*.webm
+*.avi
+*.mp3
+*.m4a
+*.wav
+*.flac
+*.aac
+*.srt
+*.ass
+*.jpg
+*.jpeg
+*.png
+*.gif
+!docs/demo.gif
+*.cube
+
+# 剪映 drafts / jy scratch
+draft_info.json
+draft_content.json
+root_meta_info.json
+.jy-spec.json
+.jy-draft.json
+.jy-backups/
+.jy-trash/
+jy-staging/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+!docs/social-preview.png

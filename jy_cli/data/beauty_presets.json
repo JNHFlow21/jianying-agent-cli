@@ -1,0 +1,27 @@
+{
+ "_source": "recovered from a GUI-saved draft (美颜媒体 → 皮肤管理 → 磨皮 81 / 美白 56), 2026-10-24",
+ "_note": "resource ids / cache package paths are install-specific cloud resources; the package must already be in 剪映's effect cache",
+ "cache_root_effect": "~/Movies/JianyingPro/User Data/Cache/effect",
+ "skin_management": {
+  "磨皮": {
+   "resource_id": "7408076339699322112",
+   "third_resource_id": "6976822940608238093",
+   "path_suffix": "7408076339699322112/1c22e62f5dc1454bb05da9fa823d3a13",
+   "type": "figure",
+   "sub_type": "auto_beauty",
+   "item_effect_type": 21,
+   "category_id": "skin_management",
+   "source_platform": 1
+  },
+  "美白": {
+   "resource_id": "7408076966164778255",
+   "third_resource_id": "6998408303826965006",
+   "path_suffix": "7408028287785602319/2976411a3ad3ce5b09ea4d7a6b4c32ac",
+   "type": "figure",
+   "sub_type": "none",
+   "item_effect_type": 21,
+   "category_id": "skin_management",
+   "source_platform": 1
+  }
+ }
+}

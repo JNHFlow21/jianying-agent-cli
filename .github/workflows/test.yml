@@ -1,0 +1,30 @@
+name: test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    # macOS: the suite uses `say`, CoreText fonts and lsappinfo. 剪映 is not
+    # installed on the runner, so every 剪映-engine render check skips by design.
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ENV_HINTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg-full (libass, libx264/x265, zimg)
+        run: brew install ffmpeg-full
+      - name: Versions
+        run: |
+          python3 --version
+          /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg -hide_banner -version | head -1
+      - name: CLI loads and doctor answers
+        run: ./bin/jy doctor | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['schema']=='jy.v1' and d['ok'], d; print('doctor ok')"
+      - name: Installer dry-run
+        run: python3 install_global.py --dry-run --with-skill --dir "$RUNNER_TEMP/bin" --skill-dir "$RUNNER_TEMP/skills"
+      - name: Smoke suite
+        run: ./tests/smoke.sh

@@ -1,0 +1,957 @@
+# jy CLI help snapshot
+
+usage: jy [-h] [--verbose] [--async] command ...
+
+Headless, ffmpeg-backed local video CLI (jy.v1 JSON on stdout).
+
+positional arguments:
+  command
+    asr            local speech-to-text -> SRT (whisper.cpp; never uploads
+                   audio)
+    asset          jy's own asset box (import/list/prune) — not 剪映's material
+                   library
+    audio          volume / fades / BGM mix or replace / ducking / loudnorm /
+                   denoise
+    beats          detect beat timestamps locally -> file for `jy montage
+                   --sync-beats`
+    batch          apply the same trim+export recipe across N inputs into a
+                   directory
+    doctor         report ffmpeg builds, capabilities, jobs, focus and 剪映
+                   state
+    probe          ffprobe files and concat compatibility
+    trim           cut a time range out of a clip
+    concat         join clips (copy or normalised re-encode)
+    speed          change playback speed (video + audio)
+    extract-audio  export the audio track
+    frame          extract one still frame
+    export         the main encode verb
+    gif            palette-optimised GIF export
+    cover          extract a cover frame and embed it as the MP4 cover art
+    draft          build a 剪映 draft, or list/rename/duplicate/delete/move
+                   drafts
+    subtitle       burn an SRT/ASS subtitle file in, or export an SRT
+    transition     apply one transition (剪映 中文名 or xfade name)
+    text           burn one styled text overlay in (ASS/libass)
+    montage        cut clips into segments and join them (蒙太奇 / beat cut)
+    filter         apply a 剪映 中文滤镜名 / look preset / LUT at an intensity
+    key            chroma key one colour out over a colour or image background
+    beautify       global soft-skin look (NOT 剪映 face-aware 美颜)
+    render         render a 剪映 draft folder to MP4 via the running 剪映 (native
+                   bridge)
+    fonts          list usable font families (system + 剪映) or validate --font
+    reverse        play the clip and its audio backwards
+    rotate         rotate 90/180/270 degrees clockwise
+    flip           mirror horizontally (h) or vertically (v)
+    crop           crop to a pixel box or a centred aspect ratio
+    adjust         per-parameter grading
+                   (brightness/contrast/saturation/gamma/temperature/…)
+    curves         apply an ffmpeg curve preset or explicit master points
+    hsl            global hue rotation / saturation / lightness
+    hdr            709/2020/HLG/PQ conversion with tone mapping (zscale)
+    mix            blend two clips with an ffmpeg blend mode
+    overlay        picture-in-picture / sticker overlay (second video or an
+                   image)
+    jobs           inspect and control background jobs started with --async
+    clean          remove jy scratch drafts and finished job records from the
+                   cache
+    effects        list/search the 剪映 material catalog (offline, from local
+                   caches)
+    material       report which 剪映 material kinds jy can author and render
+
+options:
+  -h, --help       show this help message and exit
+  --verbose        stream ffmpeg logs to stderr
+  --async          run the verb in the background and return a job id (`jy
+                   jobs`)
+
+Every invocation prints one jy.v1 JSON object on stdout. See USAGE.md for the
+contract.
+
+## jy asr
+
+usage: jy asr [-h] [--verbose] -o PATH [--force] [--model FILE]
+              [--language auto|zh|en|ja] [--threads THREADS]
+              media
+
+Decode audio to 16 kHz mono WAV, run a local whisper.cpp binary with a local
+ggml model, write the SRT. No network, no cloud, no fake: without a local
+engine+model this fails with UNSUPPORTED and an install hint.
+
+positional arguments:
+  media
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --model FILE          ggml-*.bin (default: auto-discover)
+  --language auto|zh|en|ja
+                        whisper language code (auto = let the model detect)
+  --threads THREADS
+
+## jy asset
+
+usage: jy asset [-h] action ...
+
+把素材复制进 jy 自己的素材箱（$JY_ASSET_DIR 或 ~/Movies/jy-assets），并记在 index.json 里。它只是 jy
+的记账，不会导入剪映素材库、也不联网。
+
+positional arguments:
+  action
+    import    copy files into the asset box
+    list      what jy has staged (with missing flags)
+    prune     remove staged assets older than N hours
+
+options:
+  -h, --help  show this help message and exit
+
+## jy audio
+
+usage: jy audio [-h] [--verbose] -o PATH [--force] [--volume VOLUME]
+                [--fade-in SEC] [--fade-out SEC] [--bgm FILE]
+                [--bgm-volume BGM_VOLUME] [--bgm-replace] [--duck]
+                [--loudnorm] [--denoise]
+                input
+
+Audio-only post: the video stream is copied. Actions can be combined. --duck
+lowers the BGM under the original voice; --bgm-replace discards the original
+track. loudnorm is single-pass; afftdn is a conservative spectral denoiser.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --volume VOLUME       0..8 (1 = unchanged)
+  --fade-in SEC
+  --fade-out SEC
+  --bgm FILE            music/voice-over to mix in
+  --bgm-volume BGM_VOLUME
+                        0..4
+  --bgm-replace         drop the original track
+  --duck                compress the BGM under the original voice
+  --loudnorm            EBU R128 loudness normalisation (-16 LUFS)
+  --denoise             spectral denoise (afftdn)
+
+## jy beats
+
+usage: jy beats [-h] [--verbose] -o PATH [--force] [--sensitivity SENSITIVITY]
+                [--min-gap-ms MIN_GAP_MS] [--analysis-rate ANALYSIS_RATE]
+                [--frame FRAME]
+                audio-or-video
+
+Local onset detection (no network, no ML): decodes the audio, computes energy
+flux, picks local maxima with an adaptive threshold and a minimum gap, then
+writes one millisecond timestamp per line — exactly the format `jy montage
+--sync-beats` reads. Accuracy: solid on steady 4/4 material with clear
+transients; not a musicological beat tracker.
+
+positional arguments:
+  audio-or-video
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --sensitivity SENSITIVITY
+  --min-gap-ms MIN_GAP_MS
+  --analysis-rate ANALYSIS_RATE
+  --frame FRAME
+
+## jy batch
+
+usage: jy batch [-h] [--verbose] -o PATH [--force] [--start SEC]
+                [--duration SEC] [--resolution SPEC]
+                [--codec {h264,h265,h264_vt,hevc_vt}]
+                [--fps {same,24,25,29.97,30,50,59.94,60}] [--quality 1-51]
+                [--preset {ultrafast,superfast,veryfast,faster,fast,medium,slow,slower,veryslow}]
+                [--suffix TEXT] [--dry-run]
+                input [input ...]
+
+-o is the OUTPUT DIRECTORY (created if needed). Every input gets the same
+export recipe (resolution/codec/fps/quality) plus the same trim window; file
+names are <stem><suffix>.mp4. One bad input does not abort the rest: the
+envelope reports per-file results and `ok:false` if any failed.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --start SEC
+  --duration SEC
+  --resolution SPEC
+  --codec {h264,h265,h264_vt,hevc_vt}
+  --fps {same,24,25,29.97,30,50,59.94,60}
+  --quality 1-51
+  --preset {ultrafast,superfast,veryfast,faster,fast,medium,slow,slower,veryslow}
+  --suffix TEXT         file-name suffix
+  --dry-run             plan only, encode nothing
+
+## jy doctor
+
+usage: jy doctor [-h] [--verbose]
+
+options:
+  -h, --help  show this help message and exit
+  --verbose   stream ffmpeg logs to stderr
+
+## jy probe
+
+usage: jy probe [-h] [--verbose] file [file ...]
+
+positional arguments:
+  file
+
+options:
+  -h, --help  show this help message and exit
+  --verbose   stream ffmpeg logs to stderr
+
+## jy trim
+
+usage: jy trim [-h] [--verbose] -o PATH [--force] [--start SEC] [--end SEC |
+               --duration SEC] [--copy]
+               input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --start SEC
+  --end SEC
+  --duration SEC
+  --copy             stream copy instead of re-encoding
+
+## jy concat
+
+usage: jy concat [-h] [--verbose] -o PATH [--force]
+                 [--mode {auto,copy,reencode}]
+                 input [input ...]
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --mode {auto,copy,reencode}
+
+## jy speed
+
+usage: jy speed [-h] [--verbose] -o PATH [--force] --factor FACTOR
+                [--no-audio]
+                input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --factor FACTOR
+  --no-audio
+
+## jy extract-audio
+
+usage: jy extract-audio [-h] [--verbose] -o PATH [--force] [--bitrate RATE]
+                        input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --bitrate RATE     lossy audio bitrate (default 192k)
+
+## jy frame
+
+usage: jy frame [-h] [--verbose] -o PATH [--force] --at SEC|PCT input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --at SEC|PCT       e.g. 3.5 or 10%
+
+## jy export
+
+usage: jy export [-h] [--verbose] -o PATH [--force] [--async]
+                 [--resolution SPEC] [--fit {contain,cover,stretch}]
+                 [--no-pad] [--fps {same,24,25,29.97,30,50,59.94,60}]
+                 [--codec {h264,h265,h264_vt,hevc_vt,prores}]
+                 [--quality 1-51 | --bitrate RATE]
+                 [--preset {ultrafast,superfast,veryfast,faster,fast,medium,slow,slower,veryslow}]
+                 [--audio-codec {aac,copy,none}] [--audio-bitrate RATE]
+                 [--audio-sample-rate HZ] [--bitdepth {8,10}] [--faststart |
+                 --no-faststart] [--hw] [--dry-run]
+                 input
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --async               run in the background and return a job id (see `jy
+                        jobs`)
+  --resolution SPEC
+  --fit {contain,cover,stretch}
+  --no-pad
+  --fps {same,24,25,29.97,30,50,59.94,60}
+  --codec {h264,h265,h264_vt,hevc_vt,prores}
+  --quality 1-51
+  --bitrate RATE
+  --preset {ultrafast,superfast,veryfast,faster,fast,medium,slow,slower,veryslow}
+  --audio-codec {aac,copy,none}
+  --audio-bitrate RATE
+  --audio-sample-rate HZ
+  --bitdepth {8,10}
+  --faststart
+  --no-faststart
+  --hw                  use VideoToolbox encoders
+  --dry-run             print argv, encode nothing
+
+## jy gif
+
+usage: jy gif [-h] [--verbose] -o PATH [--force] [--start SEC]
+              [--duration SEC] [--width WIDTH] [--fps GIF_FPS]
+              input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --start SEC
+  --duration SEC
+  --width WIDTH
+  --fps GIF_FPS
+
+## jy cover
+
+usage: jy cover [-h] [--verbose] -o PATH [--force] [--at SEC|PCT]
+                [--quality QUALITY] [--cover-out PATH]
+                input
+
+Pull one frame (--at seconds or percent) and mux it into the output as an
+attached_pic stream (mp4 'covr'), which is what Finder/QuickTime and most
+players show as the cover. Optionally also save the JPEG.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --at SEC|PCT       default 0
+  --quality QUALITY  JPEG quality (ffmpeg -q:v 1..31, lower is better)
+  --cover-out PATH   also write the extracted JPEG here
+
+## jy draft
+
+usage: jy draft [-h] action ...
+
+草稿层：`build` 从 spec 生成 draft_info.json（严格校验字段、默认 staging 素材）；其余子命令管理剪映草稿根目录（默认
+dry-run，--apply 才动，索引先备份，删除进 .jy-trash）。
+
+positional arguments:
+  action
+    build      write <dir>/draft_info.json from spec.json (strict fields,
+               staged media)
+    list       list drafts from root_meta_info.json
+    rename     rename a draft (dry-run unless --apply)
+    duplicate  copy a draft (dry-run unless --apply)
+    delete     move a draft to <root>/.jy-trash (dry-run unless --apply/--yes)
+    move       move a draft into a folder (dry-run unless --apply)
+    history    list index/draft backups
+
+options:
+  -h, --help   show this help message and exit
+
+## jy subtitle
+
+usage: jy subtitle [-h] [--verbose] --srt FILE [--font-size FONT_SIZE]
+                   [--font-name FONT_NAME] [--margin-v MARGIN_V]
+                   [--style {default,bold,cinematic,karaoke}]
+                   [--position {top,center,bottom}] [--max-chars-per-line N]
+                   [--export-srt PATH] [-o PATH] [--force]
+                   [input]
+
+Burn .srt/.ass subtitles with libass, or with --export-srt convert a subtitle
+file to SRT without rendering video. --style presets are ASS style overrides;
+--max-chars-per-line re-wraps .srt text before burning.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  --srt FILE            .srt or .ass
+  --font-size FONT_SIZE
+  --font-name FONT_NAME
+  --margin-v MARGIN_V
+  --style {default,bold,cinematic,karaoke}
+                        look preset applied as ASS style overrides
+  --position {top,center,bottom}
+                        anchor the whole subtitle track (default: the style's
+                        own alignment)
+  --max-chars-per-line N
+                        re-wrap .srt lines longer than N characters before
+                        burning
+  --export-srt PATH     write SRT here instead of burning (no -o, no video
+                        needed)
+  -o, --output PATH
+  --force               overwrite an existing output
+
+## jy transition
+
+usage: jy transition [-h] [--verbose] [--type NAME] [--duration SEC]
+                     [--offset SEC] [--list] [-o PATH] [--force]
+                     [input ...]
+
+Join two clips with a single transition. --type accepts ffmpeg xfade names AND
+剪映's Chinese names (叠化/闪白/黑场/推移/…), resolved to the best local approximation
+and reported in data.resolution{fidelity}. `--list` shows both columns.
+Geometry/fps are normalised to the first clip.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  --type NAME        剪映中文名（叠化/闪白/模糊/拉近/…）或 xfade 名（fade/dissolve/wipeleft/…）
+  --duration SEC
+  --offset SEC       transition start on the first clip (default: first
+                     duration - duration)
+  --list             list xfade names + 剪映 aliases with their fidelity and
+                     exit
+  -o, --output PATH
+  --force            overwrite an existing output
+
+## jy text
+
+usage: jy text [-h] [--verbose] -o PATH [--force] --content TEXT [--start SEC]
+               [--duration SEC] [--position top|center|bottom|X,Y]
+               [--font-size FONT_SIZE] [--font-name FONT_NAME]
+               [--color NAME|RRGGBB] [--outline OUTLINE]
+               [--animation {fadein,slideup,typewriter,none}]
+               input
+
+Burn a single styled text line in with libass/ASS: animations
+(fadein/slideup/typewriter), outline and any position. Use \n for a line
+break. Needs an ffmpeg build with libass.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --content TEXT
+  --start SEC
+  --duration SEC
+  --position top|center|bottom|X,Y
+  --font-size FONT_SIZE
+  --font-name FONT_NAME
+  --color NAME|RRGGBB
+  --outline OUTLINE     outline width in px
+  --animation {fadein,slideup,typewriter,none}
+
+## jy montage
+
+usage: jy montage [-h] [--verbose] -o PATH [--force] (--per-clip SEC |
+                  --sync-beats FILE) [--transition NAME]
+                  [--transition-duration SEC]
+                  input [input ...]
+
+Montage assembly: trim each clip to --per-clip seconds, or cut on --sync-beats
+timestamps (see `jy beats`), then join the segments (optionally with an xfade
+transition; 剪映 中文名 accepted too). Normalised to the first clip.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --per-clip SEC        equal segment length per clip
+  --sync-beats FILE     cut-timestamp file (milliseconds per line); one clip
+                        per cut
+  --transition NAME     xfade name, 剪映 中文名, or none
+  --transition-duration SEC
+
+## jy filter
+
+usage: jy filter [-h] [--verbose] [-o PATH] [--force] [--preset NAME]
+                 [--lut FILE] [--intensity 0-100] [--list]
+                 [input]
+
+Accepts 剪映's Chinese filter names (日系/黑白/暗调/…), the older local preset names
+(vivid/warm/cool/film/bw/vintage), or --lut file.cube. Every resolution is
+reported in data.resolution{fidelity}; `--list` shows 剪映名 → 本地预设 → fidelity.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --preset NAME      剪映中文滤镜名（日系/黑白/暗调/…）或本地预设（vivid/film/…）
+  --lut FILE         .cube 3D LUT (lut3d)
+  --intensity 0-100  blend strength
+  --list             list 剪映 aliases -> local preset -> fidelity
+
+## jy key
+
+usage: jy key [-h] [--verbose] -o PATH [--force] [--color RRGGBB]
+              [--similarity SIMILARITY] [--blend BLEND]
+              [--bg color:NAME|#RRGGBB|image.jpg]
+              input
+
+色度抠图 only: colorkey + overlay. Smart matte / custom matte / matte outline need
+the 剪映 (VESDK) engine and are not implemented.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --color RRGGBB
+  --similarity SIMILARITY
+  --blend BLEND
+  --bg color:NAME|#RRGGBB|image.jpg
+
+## jy beautify
+
+usage: jy beautify [-h] [--verbose] -o PATH [--force] [--smooth 0-100]
+                   [--brighten 0-100] [--sharpen 0-100]
+                   input
+
+Offline approximation only: gblur + blend + eq + unsharp applied to the whole
+frame. This is a global look, not face detection — true 美颜/磨皮/瘦脸 needs the 剪映
+(VESDK) engine.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --smooth 0-100
+  --brighten 0-100
+  --sharpen 0-100
+
+## jy render
+
+usage: jy render [-h] [--verbose] -o PATH [--force] [--async]
+                 [--engine {jianying,local}] [--timeout-ms MS]
+                 [--focus-guard {off,restore,watch}] [--no-focus-guard]
+                 [--focus-interval-ms MS] [--relaunch-app]
+                 [--relaunch-wait-ms MS] [--warmup] [--warmup-timeout-ms MS]
+                 [--health-timeout-ms MS] [--preflight]
+                 [--cold-start-window-ms MS] [--lock-wait-ms MS]
+                 [--on-entitlement {fail,local}] [--keep-draft]
+                 draft-dir
+
+用剪映自己的原生 film-export 渲染草稿目录：只需要剪映在运行，不需要点任何界面。默认带焦点守卫（渲染期间把前台应用还给用户）；传输失败会重新发现
+bridge 并重试一次；--relaunch-app 才允许拉起剪映。
+
+positional arguments:
+  draft-dir             含 draft_info.json 的草稿目录
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --async               run in the background and return a job id (see `jy
+                        jobs`)
+  --engine {jianying,local}
+                        jianying=剪映原生引擎（默认）；local 会明确报错并指向 ffmpeg 动词
+  --timeout-ms MS       交给剪映的导出超时（默认 600000 = 10 分钟）
+  --focus-guard {off,restore,watch}
+                        watch (default) = re-activate the previous app every
+                        interval during the export, then restore; restore =
+                        touch focus only once, after the export; off = never
+                        touch focus. A/B on a warm 剪映: watch and off both
+                        render fine.
+  --no-focus-guard      alias for --focus-guard off
+  --focus-interval-ms MS
+                        poll interval for --focus-guard watch (default 200)
+  --relaunch-app        if the bridge is gone, relaunch 剪映 once and retry
+                        (default off: never launches apps behind your back)
+  --relaunch-wait-ms MS
+                        how long to wait for the bridge after --relaunch-app
+                        (default 45000)
+  --warmup              pay the known first-export cost on a throwaway 1 s
+                        draft before the real export (opt-in; runs after a
+                        relaunch / cold start / slow health)
+  --warmup-timeout-ms MS
+                        bound for the warmup export (default 200000)
+  --health-timeout-ms MS
+                        bridge health probe budget before giving up (default
+                        5000; keep <= 5000)
+  --preflight           read-only health/route/focus check; never starts an
+                        export
+  --cold-start-window-ms MS
+                        treat 剪映 as freshly launched when its process is
+                        younger than this; the first export then gets one
+                        automatic retry (default 180000). 0 disables
+  --lock-wait-ms MS     wait this long for the single-instance export window
+                        (default 30000)
+  --on-entitlement {fail,local}
+                        when 剪映 refuses an item for membership reasons: fail
+                        (default) or re-render the same timeline with the
+                        local ffmpeg approximation (explicitly reported in
+                        data.degraded_items)
+  --keep-draft          do not delete a jy-authored scratch draft after a
+                        successful render
+
+## jy fonts
+
+usage: jy fonts [-h] [--verbose] [--family TEXT] [--source {system,jianying}]
+                [--check FAMILY] [--font FAMILY]
+
+Enumerates macOS system fonts and 剪映's bundled Font directory and reads family
+names from the sfnt name table (stdlib only). --check/--font is strict: a typo
+fails with suggestions instead of silently falling back.
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  --family TEXT         substring filter for the listing
+  --source {system,jianying}
+                        only fonts from this source
+  --check FAMILY        validate a family name strictly (fails on typos)
+  --font FAMILY         alias for --check (matches text/subtitle's --font-
+                        name)
+
+## jy reverse
+
+usage: jy reverse [-h] [--verbose] -o PATH [--force] input
+
+ffmpeg `reverse` + `areverse`. Buffers the whole clip in RAM, so trim long
+sources first.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+
+## jy rotate
+
+usage: jy rotate [-h] [--verbose] -o PATH [--force] [--degrees {90,180,270}]
+                 input
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --degrees {90,180,270}
+
+## jy flip
+
+usage: jy flip [-h] [--verbose] -o PATH [--force] [--axis {h,v}] input
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --axis {h,v}
+
+## jy crop
+
+usage: jy crop [-h] [--verbose] -o PATH [--force] [--width PX] [--height PX]
+               [--x PX] [--y PX] [--aspect W:H]
+               input
+
+Either --width/--height/--x/--y (pixels, centre by default) or --aspect 9:16
+for the largest centred crop with that ratio. Sizes are rounded to even pixels
+for yuv420p.
+
+positional arguments:
+  input
+
+options:
+  -h, --help         show this help message and exit
+  --verbose          stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force            overwrite an existing output
+  --width PX
+  --height PX
+  --x PX
+  --y PX
+  --aspect W:H       e.g. 9:16, 1:1, 4:3
+
+## jy adjust
+
+usage: jy adjust [-h] [--verbose] -o PATH [--force] [--brightness 0-100]
+                 [--contrast 0-100] [--saturation 0-100] [--gamma 0-100]
+                 [--temperature 0-100] [--sharpness 0-100] [--vignette 0-100]
+                 input
+
+Global grading with 0-100 strength per parameter (0 = untouched). Mapping:
+brightness→eq 0..0.30, contrast→eq 1..1.60, saturation→eq 1..1.80, gamma→eq
+1..1.50, temperature→colorbalance 0..±0.20, sharpness→unsharp 0..1.5,
+vignette→vignette angle PI/5..PI/3.
+
+positional arguments:
+  input
+
+options:
+  -h, --help           show this help message and exit
+  --verbose            stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force              overwrite an existing output
+  --brightness 0-100
+  --contrast 0-100
+  --saturation 0-100
+  --gamma 0-100
+  --temperature 0-100
+  --sharpness 0-100
+  --vignette 0-100
+
+## jy curves
+
+usage: jy curves [-h] [--verbose] -o PATH [--force]
+                 (--preset {none,color_negative,cross_process,darker,increase_contrast,lighter,linear_contrast,medium_contrast,negative,strong_contrast,vintage} |
+                 --points '0/0 0.5/0.6 1/1')
+                 input
+
+Curves: either a named ffmpeg preset (medium_contrast, vintage,
+cross_process…) or --points 'x/y x/y …' master control points in 0..1.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --preset {none,color_negative,cross_process,darker,increase_contrast,lighter,linear_contrast,medium_contrast,negative,strong_contrast,vintage}
+  --points '0/0 0.5/0.6 1/1'
+
+## jy hsl
+
+usage: jy hsl [-h] [--verbose] -o PATH [--force] [--hue DEG]
+              [--saturation SATURATION] [--lightness LIGHTNESS]
+              input
+
+hue=h, saturation factor and lightness via eq. This is a global adjustment,
+not the 剪映 per-colour-range HSL panel.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --hue DEG             -180..180
+  --saturation SATURATION
+                        -1..1 (added to 1)
+  --lightness LIGHTNESS
+                        -1..1
+
+## jy hdr
+
+usage: jy hdr [-h] [--verbose] -o PATH [--force] [--from {709,2020,hlg,pq}]
+              [--to {709,2020,hlg,pq}]
+              [--tonemap {hable,mobius,reinhard,linear,clip}] [--peak NITS]
+              input
+
+Colour-space conversion through zscale. HDR→SDR uses tonemap; SDR→HDR expands
+and tags the transfer. Output is 8-bit yuv420p without HDR mastering metadata.
+
+positional arguments:
+  input
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --from {709,2020,hlg,pq}
+  --to {709,2020,hlg,pq}
+  --tonemap {hable,mobius,reinhard,linear,clip}
+  --peak NITS
+
+## jy mix
+
+usage: jy mix [-h] [--verbose] -o PATH [--force]
+              [--mode {normal,screen,multiply,overlay,lighten,darken,difference,add,average,softlight,hardlight,exclusion,subtract,negation}]
+              [--opacity 0-100]
+              base top
+
+Composite the second clip over the first with a blend mode; the second clip is
+scaled/padded to the first.
+
+positional arguments:
+  base
+  top
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --mode {normal,screen,multiply,overlay,lighten,darken,difference,add,average,softlight,hardlight,exclusion,subtract,negation}
+  --opacity 0-100       weight of the blended (top) result; 0 = the base clip
+
+## jy overlay
+
+usage: jy overlay [-h] [--verbose] -o PATH [--force] [--position ANCHOR|X,Y]
+                  [--scale SCALE] [--opacity 0-100] [--start SEC]
+                  [--duration SEC] [--margin MARGIN]
+                  base overlay
+
+Composite a second video or a still image onto the base clip: position, scale,
+opacity and a time window. Audio comes from the base clip.
+
+positional arguments:
+  base
+  overlay               video or image (.png/.jpg)
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  -o, --output PATH
+  --force               overwrite an existing output
+  --position ANCHOR|X,Y
+                        top-left|top|top-right|left|center|right|bottom-
+                        left|bottom|bottom-right|X,Y (default bottom-right)
+  --scale SCALE         fraction of base width
+  --opacity 0-100
+  --start SEC
+  --duration SEC        window length (default: to EOF)
+  --margin MARGIN       edge margin in px
+
+## jy jobs
+
+usage: jy jobs [-h] action ...
+
+后台任务：`jy <verb> --async` 会立刻返回 job id；这里查询/等待/终止。状态是 ~/.cache/jy/jobs 下的
+JSON（可用 $JY_CACHE_DIR 覆盖），没有守护进程。
+
+positional arguments:
+  action
+    list      list recent jobs
+    status    one job's record
+    wait      block until a job is `succeeded`, `failed`, `killed`
+    kill      terminate a running job (SIGTERM→SIGKILL)
+
+options:
+  -h, --help  show this help message and exit
+
+## jy clean
+
+usage: jy clean [-h] [--verbose] [--dry-run] [--older-than-hours H]
+                [--jobs-only] [--drafts-only] [--staging] [--assets] [--all]
+                [--apply]
+
+清理 jy 自己的缓存：临时草稿（~/.cache/jy/drafts 里带 .jy-draft.json 的）和已结束的任务记录/日志。默认只删 24h
+以前的；--dry-run 只报告。
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             stream ffmpeg logs to stderr
+  --dry-run             report only, delete nothing
+  --older-than-hours H  only remove entries older than H hours (default 24)
+  --jobs-only           only sweep job records
+  --drafts-only         only sweep scratch drafts
+  --staging             sweep draft-build staging dirs (~/Movies/jy-staging or
+                        $JY_STAGING_DIR)
+  --assets              sweep the jy asset box (~/Movies/jy-assets or
+                        $JY_ASSET_DIR)
+  --all                 sweep staging + assets as well as the cache
+  --apply               really delete in --staging/--assets/--all areas (those
+                        default to dry-run)
+
+## jy effects
+
+usage: jy effects [-h] [--verbose] action ...
+
+剪映素材目录（离线）：剪映内置资源的 id 与中文名（可用 ~/.config/jy/effects_catalog.json 覆盖），外加 33 种 asset_type
+和可用的参数命名空间。不联网、不启动剪映。
+
+positional arguments:
+  action
+    list      list catalog entries with per-kind counts
+    search    search catalog entries by Chinese name or id
+    params    show legal parameter namespaces and their ranges
+
+options:
+  -h, --help  show this help message and exit
+  --verbose   stream ffmpeg logs to stderr
+
+## jy material
+
+usage: jy material [-h] [--verbose] action ...
+
+素材图层实现状态：哪些已经本机剪映渲染验证，哪些只有 schema。
+
+positional arguments:
+  action
+    status    proven vs unverified material kinds
+    register  add an authored draft to 剪映's draft list (root_meta_info.json)
+
+options:
+  -h, --help  show this help message and exit
+  --verbose   stream ffmpeg logs to stderr

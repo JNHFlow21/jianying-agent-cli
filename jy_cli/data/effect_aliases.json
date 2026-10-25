@@ -1,0 +1,712 @@
+{
+ "schema": "jy.effect_aliases.v1",
+ "provenance": {
+  "source": "hand-distilled from 剪映 11.6 effect names (offline approximation table)",
+  "source_generated": "2026-10-24",
+  "distilled": "2026-10-24",
+  "note": "只保留「剪映中文名 -> 本地实现」的别名表；剪映素材包/LUT 不在 CLI 内。fidelity 是「本地近似与剪映原效果的接近程度」，被本地原语能力封顶（因此可能低于 catalogue_grade——例如原版用 lutrgb 实现的『闪动』在 xfade 里只能是 rough）。",
+  "grade_legend": {
+   "exact": "same primitive exists in ffmpeg",
+   "close": "recognisable approximation",
+   "rough": "different mechanism, needs graph work",
+   "no": "not reproducible offline"
+  },
+  "coverage": {
+   "transitions": {
+    "total": 41,
+    "by_grade": {
+     "exact": 12,
+     "close": 14,
+     "rough": 7,
+     "no": 8
+    },
+    "approx_or_better": 26,
+    "pct": 63.4,
+    "exact_pct": 29.3
+   },
+   "filters": {
+    "total": 28,
+    "by_grade": {
+     "exact": 5,
+     "close": 18,
+     "rough": 5
+    },
+    "approx_or_better": 23,
+    "pct": 82.1,
+    "exact_pct": 17.9
+   },
+   "text_animations": {
+    "total": 13,
+    "by_grade": {
+     "exact": 4,
+     "close": 8,
+     "no": 1
+    },
+    "approx_or_better": 12,
+    "pct": 92.3,
+    "exact_pct": 30.8,
+    "note": "grade assumes host ffmpeg (drawtext available); with the bundled ffmpeg every drawtext-based entry drops to 'no'"
+   }
+  }
+ },
+ "transitions": {
+  "叠化": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "dissolve",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "叠化 = 交叉淡入淡出，xfade fade 即同一原语",
+   "xfade": "fade"
+  },
+  "闪白": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "fade_white",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "闪白 = 交叉淡入淡出经过白场，xfade fadewhite",
+   "xfade": "fadewhite"
+  },
+  "闪黑": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "fade_black",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "闪黑 = 交叉淡入淡出经过黑场，xfade fadeblack",
+   "xfade": "fadeblack"
+  },
+  "黑场": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "fadeblack",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "黑场 = 经黑场过渡，xfade fadeblack",
+   "xfade": "fadeblack"
+  },
+  "白场": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "fadewhite",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "白场 = 经白场过渡，xfade fadewhite",
+   "xfade": "fadewhite"
+  },
+  "模糊": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "blur",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "本地用 xfade hblur（横向模糊过渡）；原版是两遍 fade+gblur 衰减",
+   "xfade": "hblur"
+  },
+  "云朵": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "cloud",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "云朵需要 matte 擦除；本地只有模糊过渡，形状完全不对",
+   "xfade": "hblur"
+  },
+  "水墨": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "ink",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "水墨 = 蒙版擦除+曲线；本地退化成 dissolve",
+   "xfade": "dissolve"
+  },
+  "光晕": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "glow",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "光晕 = fade + gblur/screen 叠层；本地只有白场淡化",
+   "xfade": "fadewhite"
+  },
+  "圆形": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "circleopen",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "圆形扩散 = xfade circleopen",
+   "xfade": "circleopen"
+  },
+  "矩形": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "rectcrop",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "矩形裁切 = xfade rectcrop",
+   "xfade": "rectcrop"
+  },
+  "星形": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "star",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "ffmpeg 没有星形形状擦除；除非用 matte 手绘",
+   "alternatives": [
+    "圆形",
+    "矩形",
+    "推移"
+   ]
+  },
+  "心形": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "heart",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "ffmpeg 没有心形形状擦除",
+   "alternatives": [
+    "圆形",
+    "矩形",
+    "推移"
+   ]
+  },
+  "翻页": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "page_turn",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "翻页需要透视+alpha 多滤镜图；本地用横向切片",
+   "xfade": "hlslice"
+  },
+  "时钟": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "clock",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "没有径向时钟扫过原语",
+   "alternatives": [
+    "圆形",
+    "光效扫光"
+   ]
+  },
+  "推移": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "slide",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "推移 = xfade slideleft（另有 slideright/slideup/slidedown）",
+   "xfade": "slideleft"
+  },
+  "滑入": {
+   "kind": "transition",
+   "group": "基础",
+   "id_hint": "slide_in",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "滑入 = xfade wipeleft（另有 wiperight/up/down）",
+   "xfade": "wipeleft"
+  },
+  "拉近": {
+   "kind": "transition",
+   "group": "运镜",
+   "id_hint": "zoom_in",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "拉近 ≈ xfade zoomin；原版是 zoompan+scale 两段",
+   "xfade": "zoomin"
+  },
+  "拉远": {
+   "kind": "transition",
+   "group": "运镜",
+   "id_hint": "zoom_out",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "没有 zoom-out 过渡原语；本地用 zoomin，方向相反",
+   "xfade": "zoomin"
+  },
+  "旋转": {
+   "kind": "transition",
+   "group": "运镜",
+   "id_hint": "rotate",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "没有旋转过渡原语；本地用径向擦除代替",
+   "xfade": "radial"
+  },
+  "3D运镜": {
+   "kind": "transition",
+   "group": "运镜",
+   "id_hint": "zoom3d",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "需要 3D 相机模型",
+   "alternatives": [
+    "拉近",
+    "拉远",
+    "推移"
+   ]
+  },
+  "视差": {
+   "kind": "transition",
+   "group": "运镜",
+   "id_hint": "parallax",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "需要深度图/蒙版",
+   "alternatives": [
+    "拉近",
+    "推移",
+    "滑入"
+   ]
+  },
+  "信号故障": {
+   "kind": "transition",
+   "group": "故障",
+   "id_hint": "glitch",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "故障感 ≈ 像素化；原版是 noise+chromashift+displace 关键帧",
+   "xfade": "pixelize"
+  },
+  "毛刺": {
+   "kind": "transition",
+   "group": "故障",
+   "id_hint": "glitch_rgb",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "毛刺 ≈ 横向切片；原版是 rgbashift+noise",
+   "xfade": "hlslice"
+  },
+  "闪动": {
+   "kind": "transition",
+   "group": "故障",
+   "id_hint": "strobe",
+   "catalogue_grade": "exact",
+   "fidelity": "rough",
+   "note": "闪动原版是 lutrgb 亮度尖峰（不是转场原语）；本地用快速淡化",
+   "xfade": "fadefast"
+  },
+  "胶片烧灼": {
+   "kind": "transition",
+   "group": "复古",
+   "id_hint": "film_burn",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "烧灼 ≈ 灰度淡化；原版是 curves+noise+colorbalance 动画",
+   "xfade": "fadegrays"
+  },
+  "电视雪花": {
+   "kind": "transition",
+   "group": "复古",
+   "id_hint": "tv_noise",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "雪花 ≈ 灰度淡化；原版是 noise=alls+monochrome",
+   "xfade": "fadegrays"
+  },
+  "录像带": {
+   "kind": "transition",
+   "group": "复古",
+   "id_hint": "vhs",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "VHS ≈ 模糊；原版是 noise+chromashift+rgbashift",
+   "xfade": "hblur"
+  },
+  "叠影": {
+   "kind": "transition",
+   "group": "复古",
+   "id_hint": "ghost",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "叠影 ≈ dissolve；原版是 tblend+blend 拖影",
+   "xfade": "dissolve"
+  },
+  "光效扫光": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "light_sweep",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "扫光 ≈ 横向擦除；原版是渐变+screen 叠层",
+   "xfade": "wipeleft"
+  },
+  "漏光": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "light_leak",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "漏光 ≈ 白场淡化；原版是 screen 叠一层漏光素材",
+   "xfade": "fadewhite"
+  },
+  "闪光": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "flash",
+   "catalogue_grade": "exact",
+   "fidelity": "rough",
+   "note": "闪光原版是 lutrgb 尖峰（不是转场原语）；本地用白场淡化",
+   "xfade": "fadewhite"
+  },
+  "星光": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "sparkle",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "星光需要粒子叠层；本地退化成 dissolve",
+   "xfade": "dissolve"
+  },
+  "粒子": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "particles",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "需要粒子系统",
+   "alternatives": [
+    "星光",
+    "光效扫光",
+    "模糊"
+   ]
+  },
+  "火焰": {
+   "kind": "transition",
+   "group": "光效",
+   "id_hint": "fire",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "需要程序化火焰",
+   "alternatives": [
+    "胶片烧灼",
+    "光效扫光",
+    "信号故障"
+   ]
+  },
+  "水墨晕染": {
+   "kind": "transition",
+   "group": "潮流",
+   "id_hint": "ink_bleed",
+   "catalogue_grade": "no",
+   "fidelity": "no",
+   "note": "需要流体模拟",
+   "alternatives": [
+    "水墨",
+    "模糊",
+    "叠影"
+   ]
+  },
+  "漫画": {
+   "kind": "transition",
+   "group": "潮流",
+   "id_hint": "comic",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "漫画 ≈ 像素化；原版是 edgedetect+posterize",
+   "xfade": "pixelize"
+  },
+  "弹跳": {
+   "kind": "transition",
+   "group": "趣味",
+   "id_hint": "bounce",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "弹跳 ≈ 上滑；原版是带 easing 的缩放+叠加",
+   "xfade": "slideup"
+  },
+  "抖动": {
+   "kind": "transition",
+   "group": "趣味",
+   "id_hint": "shake",
+   "catalogue_grade": "exact",
+   "fidelity": "rough",
+   "note": "抖动 ≈ 平滑左移；原版是 crop+随机偏移表达式",
+   "xfade": "smoothleft"
+  },
+  "翻滚": {
+   "kind": "transition",
+   "group": "趣味",
+   "id_hint": "roll",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "翻滚 ≈ 上滑；原版是 rotate+slide",
+   "xfade": "slideup"
+  },
+  "声音转场": {
+   "kind": "transition",
+   "group": "声音",
+   "id_hint": "audio_swell",
+   "catalogue_grade": "close",
+   "fidelity": "rough",
+   "note": "声音转场是纯音频（音量渐强）；本动词只能做画面 fade + 音频交叉淡化",
+   "xfade": "fade"
+  }
+ },
+ "filters": {
+  "原片": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "none",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "原片 = 不做处理（null），与剪映一致",
+   "local": "none"
+  },
+  "清晰": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "clarity",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "清晰 ≈ 对比+锐化（unsharp+eq）",
+   "local": "clarity"
+  },
+  "自然": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "natural",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "自然 ≈ 饱和度 +5%",
+   "local": "natural"
+  },
+  "白皙": {
+   "kind": "filter",
+   "group": "人像",
+   "id_hint": "fair_skin",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "白皙 ≈ 提亮+伽马，没有剪映的肤色保护",
+   "local": "fair_skin"
+  },
+  "粉嫩": {
+   "kind": "filter",
+   "group": "人像",
+   "id_hint": "pink",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "粉嫩 ≈ 阴影偏品红",
+   "local": "pink"
+  },
+  "冷白": {
+   "kind": "filter",
+   "group": "人像",
+   "id_hint": "cool_white",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "冷白 ≈ 冷色偏+提亮曲线",
+   "local": "cool_white"
+  },
+  "奶油": {
+   "kind": "filter",
+   "group": "人像",
+   "id_hint": "creamy",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "奶油 = 柔焦光晕；本地只有 gblur+提亮",
+   "local": "creamy"
+  },
+  "港风": {
+   "kind": "filter",
+   "group": "复古",
+   "id_hint": "hk_retro",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "港风 ≈ 青橙+颗粒",
+   "local": "hk_retro"
+  },
+  "胶片": {
+   "kind": "filter",
+   "group": "复古",
+   "id_hint": "film",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "胶片质感需要 LUT；本地用曲线近似，想更像请用 --lut file.cube",
+   "local": "film"
+  },
+  "日系": {
+   "kind": "filter",
+   "group": "复古",
+   "id_hint": "japanese",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "日系 ≈ 提亮曲线+降饱和",
+   "local": "japanese"
+  },
+  "黑白": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "mono",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "黑白 = hue=s=0，与剪映同为去色",
+   "local": "mono"
+  },
+  "高对比黑白": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "mono_hc",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "高对比黑白 = 去色+对比 1.4",
+   "local": "mono_hc"
+  },
+  "褪色": {
+   "kind": "filter",
+   "group": "基础",
+   "id_hint": "faded",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "褪色 ≈ 提亮曲线+饱和 0.7",
+   "local": "faded"
+  },
+  "暖阳": {
+   "kind": "filter",
+   "group": "风景",
+   "id_hint": "warm_sun",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "暖阳 ≈ 暖色偏+轻微提亮",
+   "local": "warm_sun"
+  },
+  "青橙": {
+   "kind": "filter",
+   "group": "风景",
+   "id_hint": "teal_orange",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "青橙 ≈ colorbalance 冷暖分离，没有局部肤色保护",
+   "local": "teal_orange"
+  },
+  "清透": {
+   "kind": "filter",
+   "group": "风景",
+   "id_hint": "crisp",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "清透 ≈ 对比+轻锐化",
+   "local": "crisp"
+  },
+  "美食": {
+   "kind": "filter",
+   "group": "美食",
+   "id_hint": "food",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "美食 ≈ 饱和+对比+暖",
+   "local": "food"
+  },
+  "质感动感": {
+   "kind": "filter",
+   "group": "潮流",
+   "id_hint": "texture",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "质感 ≈ 局部对比（unsharp+contrast）；原版是 local contrast+histeq",
+   "local": "texture"
+  },
+  "赛博": {
+   "kind": "filter",
+   "group": "潮流",
+   "id_hint": "cyber",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "赛博 ≈ 阴影偏蓝+高饱和",
+   "local": "cyber"
+  },
+  "烟灰": {
+   "kind": "filter",
+   "group": "潮流",
+   "id_hint": "ash",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "烟灰 ≈ 低饱和+中对比",
+   "local": "ash"
+  },
+  "暗调": {
+   "kind": "filter",
+   "group": "电影",
+   "id_hint": "dark_cinema",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "暗调 ≈ 压暗曲线+暗角",
+   "local": "dark_cinema"
+  },
+  "变形宽银幕": {
+   "kind": "filter",
+   "group": "电影",
+   "id_hint": "anamorphic",
+   "catalogue_grade": "rough",
+   "fidelity": "rough",
+   "note": "宽银幕 ≈ 上下黑边+曲线；原版还有镜头光晕",
+   "local": "anamorphic"
+  },
+  "莫兰迪": {
+   "kind": "filter",
+   "group": "电影",
+   "id_hint": "morandi",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "莫兰迪 ≈ 低饱和+提亮曲线",
+   "local": "morandi"
+  },
+  "油画": {
+   "kind": "filter",
+   "group": "趣味",
+   "id_hint": "oil",
+   "catalogue_grade": "rough",
+   "fidelity": "no",
+   "note": "油画需要风格化（笔触/涂抹），ffmpeg 没有等价实现",
+   "alternatives": [
+    "素描",
+    "黑白漫画",
+    "烟灰"
+   ]
+  },
+  "素描": {
+   "kind": "filter",
+   "group": "趣味",
+   "id_hint": "sketch",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "素描 ≈ edgedetect 线稿",
+   "local": "sketch"
+  },
+  "黑白漫画": {
+   "kind": "filter",
+   "group": "趣味",
+   "id_hint": "comic_bw",
+   "catalogue_grade": "close",
+   "fidelity": "close",
+   "note": "黑白漫画 ≈ 线稿+反色",
+   "local": "comic_bw"
+  },
+  "马赛克": {
+   "kind": "filter",
+   "group": "趣味",
+   "id_hint": "mosaic",
+   "catalogue_grade": "exact",
+   "fidelity": "exact",
+   "note": "马赛克 = pixelize，与剪映同为像素块",
+   "local": "mosaic"
+  },
+  "镜像": {
+   "kind": "filter",
+   "group": "趣味",
+   "id_hint": "mirror",
+   "catalogue_grade": "exact",
+   "fidelity": "rough",
+   "note": "镜像原版是半幅复制；本地用整帧水平翻转近似",
+   "local": "mirror"
+  }
+ }
+}

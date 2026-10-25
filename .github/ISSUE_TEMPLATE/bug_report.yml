@@ -1,0 +1,30 @@
+name: Bug report
+description: Something did not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: envelope
+    attributes:
+      label: jy output
+      description: The JSON envelope printed by the failing command (remove personal file paths if you like).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: jy doctor
+      description: Output of `jy doctor` (contains no credentials).
+      render: json
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15.x, Python 3.12, ffmpeg-full 8.x, 剪映 11.6 (if relevant)

@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest a command, flag or 剪映 capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What do you want to do?
+      description: The editing outcome you are after, e.g. "add a zoom-in keyframe on each clip".
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
