@@ -15,7 +15,9 @@
 
 [English](README.md) · 简体中文
 
-![jy 演示：终端里对合成测试片依次运行 probe、transition、text、export、frame，每条命令输出一行 JSON，最后播放成片](docs/demo.gif)
+![jy 演示：agent 在终端里依次运行 probe、reverse、speed、带叠化的 montage、青橙滤镜、subtitle、export，每条命令输出一行 JSON，最后播放 10 秒成片《Nightfall》](docs/demo.gif)
+
+<sub>全程用 <code>jy</code> 剪辑，素材是美国国家公园管理局的公有领域延时摄影 — <a href="docs/DEMO-CREDITS.md">素材署名</a> · <a href="docs/demo.mp4">MP4 版</a></sub>
 
 </div>
 
@@ -161,7 +163,7 @@ rm -rf ~/.cache/jy                                                         # 任
 ```sh
 ./tests/smoke.sh                     # 用合成素材跑端到端测试；剪映没运行时相关检查自动跳过
 JY_SMOKE_RENDER=1 ./tests/smoke.sh   # 额外跑一次真实剪映导出（需要剪映在运行）
-python3 docs/render_demo.py          # 重新生成 docs/demo.gif（需要 Chrome + ffmpeg + jq）
+python3 docs/render_demo.py          # 重新生成 docs/demo.gif 和 demo.mp4（会下载公有领域素材；需要 Chrome、ffmpeg、jq、gifsicle）
 ```
 
 ## 声明
