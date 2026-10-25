@@ -2,7 +2,7 @@
 
 # jianying-agent-cli（`jy`）
 
-**给 AI agent 用的无界面视频剪辑命令行：ffmpeg 本地剪辑 + 可选调用你本机的剪映专业版原生渲染。**
+**让 AI agent 用剪映专业版剪视频：AI 写草稿，剪映自己的引擎渲染出片，全程不点界面；需要的剪映素材按名字自动搜索、下载；ffmpeg 负责素材预处理。**
 
 裁剪、拼接、字幕、标题、转场、滤镜、抠图、音频、关键帧、批量导出——每次调用只输出一个 JSON 对象，Claude Code、Codex 或任何脚本都能直接驱动，不用开 GUI。
 
@@ -27,7 +27,7 @@
 - **为 agent 设计**：stdout 永远只有**一个 `jy.v1` JSON 对象**；`ok` 是唯一成功判据，错误带错误码和 `retriable`；ffmpeg 日志只走 stderr。
 - **结果可信**：每个产出文件的命令都会用 ffprobe 回验，`ok:true` 就意味着真有一个能播放的文件。
 - **39 个命令**（含子命令 56 个）：探测、裁剪、拼接、变速、蒙太奇/踩点、字幕、ASS 文字动画、50+ 转场、滤镜/LUT、曲线/HSL、色度抠图、画中画、BGM 混音/闪避/响度、本地语音转字幕、封面、GIF、批量导出、后台任务。
-- **双引擎**：默认**本地引擎**（ffmpeg，离线、结果确定）；**剪映引擎**把草稿交给你已经安装的剪映渲染，用剪映自己的素材。
+- **双引擎**：**剪映引擎**把草稿交给你已经安装的剪映渲染，用剪映真正的转场、滤镜、特效、花字、文字动画（缺的素材自动下载）；**本地引擎**（ffmpeg，离线、结果确定）用于预处理，或你明确不想开剪映时。
 - **能找、能下剪映素材**：`jy effects search-remote 推近` 搜剪映已知的素材，`jy effects fetch 推近` 把素材包下载进剪映缓存（校验 md5、原子写入）；spec 里直接写 `"transition":{"name":"推近"}`，`jy draft build --fetch` 按名字解析并自动下载。
 - **听得懂剪映话**：`jy transition --type 叠化`、`jy filter --preset 日系`，剪映中文名会映射到本地实现，并如实报告接近程度（`fidelity: exact | close | rough`）。
 - **零 Python 依赖**：只用标准库 + ffmpeg；自带 [agent skill](skills/jianying-native/SKILL.md)，你的 agent 装上就会用。

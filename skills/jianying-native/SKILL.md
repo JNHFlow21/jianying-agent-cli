@@ -1,35 +1,103 @@
 ---
 name: jianying-native
-description: Edit videos headlessly with the `jy` CLI (jianying-native) — probe, trim, concat, speed/curve speed, montage/beat cut, subtitles, text, transitions, filters/LUTs, chroma key, audio mix, covers, keyframes, masks, batch export — and optionally render drafts with the locally installed 剪映专业版 / JianyingPro (CapCut China desktop) native engine for 剪映 materials (effects, transitions, filters, stickers, 花字, beauty, matting, color wheels, text animations). Every call prints one jy.v1 JSON object. Use for "cut this footage into a video", "add subtitles / a title / a cover", "add transitions and a filter", "batch export", 剪辑视频 / 加字幕 / 加转场滤镜 / 批量出片. Not for uploading or publishing to platforms.
+description: Edit and render videos with 剪映专业版 / JianyingPro (CapCut China desktop) from the command line via the `jy` CLI — the agent writes a draft and 剪映's own native engine renders it, no GUI clicks. Search and auto-download 剪映 materials by name (transitions, filters, video effects, 花字 text effects, text animations, stickers, beauty, matting, masks, keyframes, curve speed). Also ffmpeg tooling for preprocessing (probe, trim, concat, speed, reverse, transcode, local speech-to-subtitles) and 剪映 draft management. Use for "edit this with 剪映 / CapCut", "cut this footage into a video", "add transitions, a filter, effects, an animated title", "make a promo / demo video", "batch export", 用剪映剪 / 剪映出片 / 加转场滤镜特效花字. Not for uploading or publishing to platforms.
 ---
 
-# jianying-native (`jy`)
+# Edit videos with 剪映 (`jy`)
 
-`jy` must be on PATH (`jy doctor` works). Run `jy doctor` once per session; check flags with
-`jy <verb> --help`. The contract lives in `USAGE.md` of the repo — do not guess flags from this file.
+`jy` turns 剪映专业版 into a CLI: you write a draft, **剪映's own engine renders it**, so the result looks
+like a hand-made 剪映 edit. `jy` must be on PATH (`jy doctor` works). Flags live in `jy <verb> --help`
+and the repo's `USAGE.md` — don't guess them from memory.
 
-## Pick the engine first
+## Rule one: if the user wants 剪映, use 剪映
 
-| Need | Engine |
-|---|---|
-| Deterministic editing: cut / join / speed / subtitles / titles / transitions / grading / keying / audio / resolution / codec | **local** (ffmpeg): fast, offline, no membership quota |
-| 剪映-only materials: effects, 花字, stickers, templates, beauty, smart matting | **jianying**: `jy draft build` + `jy render` (剪映 must be running) |
+- The user says "use 剪映 / CapCut", wants 剪映 transitions/filters/effects, or wants a polished finished
+  video (promo, demo, short) → **use the 剪映 engine**.
+- A material isn't on this machine → **search and download it yourself** (`jy effects search-remote` /
+  `fetch`). Don't ask the user to click around in 剪映, and don't swap in an ffmpeg approximation because
+  something wasn't cached.
+- 剪映 isn't running → open it yourself (below). A 剪映 render fails → work through "Engine pitfalls"; if
+  it still fails, **stop and tell the user why** and let them decide whether to degrade. Never quietly
+  deliver an ffmpeg version instead.
+- Use the local engine end-to-end only when the user explicitly asks for no 剪映 / offline, and say how
+  it differs from real 剪映 materials.
 
-Unsure? `jy doctor` reports both ffmpeg builds, whether 剪映 is reachable, and membership notes.
+## Standard workflow (render with 剪映)
+
+```bash
+# 1) Check; if 剪映 isn't running, open it in the background and wait for health_ok
+jy doctor | jq '.data.jianying | {running, health_ok, logged_in}'
+open -g -a VideoFusion-macOS        # only if needed; re-run jy doctor until health_ok is true
+
+# 2) Preprocess footage with the local engine (fast, offline; only when needed)
+jy probe a.mp4 b.mp4 | jq '.data.files[] | {path, duration_s, width, height}'
+jy reverse sunrise.mp4 -o sunset.mp4
+jy speed clip.mp4 --factor 2 --no-audio -o fast.mp4
+jy asr talk.mp4 -o talk.srt                     # local speech-to-subtitles
+
+# 3) Pick 剪映 materials: what's installed, then 剪映's catalog (all panels 剪映 has loaded)
+jy effects cached --kind transition
+jy effects search-remote 推近 --kind transition   # status: cached | remote, plus a vip flag
+jy effects fetch 推近 --kind transition           # downloads into 剪映's cache; usable by name afterwards
+
+# 4) Write spec.json (materials by name) and build the draft; --fetch downloads anything not cached yet
+jy draft build --spec spec.json -o ./draft --fetch | jq '.data | {engine, tracks, materials_resolved}'
+
+# 5) Render with 剪映 (long jobs always async)
+jy render ./draft -o final.mp4 --async          # returns a job id
+jy jobs wait <job-id>
+
+# 6) Verify every material actually shows up (mandatory — see "Delivery discipline")
+jy frame final.mp4 --at 10% -o f1.png ; jy frame final.mp4 --at 50% -o f2.png ; jy frame final.mp4 --at 90% -o f3.png
+```
+
+Minimal spec, materials referenced by name:
+
+```json
+{"canvas":{"width":1920,"height":1080,"fps":30},
+ "clips":[{"path":"clips/a.mp4","source_start":2,"duration":3,"transition":{"name":"推近"}},
+          {"path":"clips/b.mp4","duration":3}],
+ "filters":[{"name":"暗灰电影感","value":0.6}],
+ "effects":[{"name":"暗角"}],
+ "texts":[{"content":"NIGHTFALL","start":0.3,"duration":2.5,"position":{"x":0,"y":0.1},
+           "style":{"color":"#FFFFFF","font_size":14},
+           "text_effect":{"name":"梦幻渐变紫边白色发光花字"},
+           "animations":[{"type":"in","name":"扫光"}]}]}
+```
+
+Clip timing: `source_start` = where to start reading the source; `duration` = how long; `start` = position
+on the timeline — **omit it to append after the previous clip** (if given, clips must be in order and not
+overlap, else `VALIDATION`). A transition goes on the **left** clip of the cut.
+
+Every item returned by `jy effects cached` / `search-remote` carries a `spec` field whose key is where it
+belongs (`clips[i].transition`, `filters[]`, `effects[]`, `texts[i].animations[]`, …) — copy it as is.
+Material names are 剪映's Chinese names; search with short keywords.
+
+## Delivery discipline
+
+1. **Frame-check every 剪映 material.** 剪映 silently ignores (or blacks out) materials it can't compose;
+   "render succeeded" ≠ "effect applied". Look at the frame at each cut for transitions, compare with/without
+   for filters and effects, look at the first frames of animated text. If one didn't apply, pick another
+   剪映 material and re-render — don't switch to a local approximation.
+2. **Report which 剪映 materials you used** (name + kind) and which steps were local preprocessing.
+3. **Touch only your own drafts.** Build drafts in your working directory (`draft build -o`); never edit
+   or list the user's own 剪映 drafts; delete the drafts you created when done. Downloaded material
+   packages staying in 剪映's cache is expected.
+4. One render per draft at a time. 剪映's export may raise its window; `jy render`'s focus guard hands
+   focus back. **Never click the 剪映 UI.**
+5. Check the output for account names, avatars or watermarks before delivering.
 
 ## Hard rules
 
-- **Trust only `ok`.** stdout is always exactly one `jy.v1` JSON object. On failure `data` is `null`
-  and `error.code` is one of `VALIDATION` `NOT_FOUND` `UNSUPPORTED` `UNAVAILABLE` `BLOCKED` `INTERNAL`.
-- Retry only when `error.retriable` is true. `BLOCKED` means a human must act (membership, material
-  download) — never loop on it.
-- `data.output` of an executed verb is re-probed with ffprobe, so it is a real file.
-- Outputs are never overwritten without `--force`. Treat user media as read-only; write to new paths.
-- Never modify the user's own 剪映 drafts. `draft build` writes a new folder; `render` only renders
-  drafts jy generated (or a copy).
-- 剪映's bridge port/token change every launch; `jy` rediscovers them. Never write the token to a file,
-  argv or logs.
-- Long jobs (renders, batches): `--async`, then `jy jobs wait <id>`.
+- **Trust only `ok`.** stdout is always exactly one `jy.v1` JSON object; on failure `data` is null — branch
+  on `error.code`.
+- Retry only when `error.retriable` is true. `BLOCKED` needs a human (membership/authorization) — never
+  loop on it.
+- File outputs in `data.output` are re-probed with ffprobe. Existing outputs are never overwritten without
+  `--force`; user media is read-only, write to new paths.
+- 剪映's port/token change on every launch and `jy` discovers them; never put tokens in files or args.
+- Material downloads only use the ByteDance CDN URLs 剪映 itself recorded, with no user cookies/tokens;
+  `jy` never reads 剪映 account data.
 
 ## Envelope
 
@@ -43,85 +111,40 @@ Unsure? `jy doctor` reports both ffmpeg builds, whether 剪映 is reachable, and
 `outcome` is `readonly` / `preview` / `executed` / `noop` / `unknown`. Exit codes: `0` ok, `1` failure,
 `2` validation.
 
-## Common recipes
-
-```bash
-jy doctor                                                    # 0) self-check
-jy probe a.mp4 b.mp4 | jq '.data.files[], .data.concat'       # 1) inspect, decide specs
-jy trim a.mp4 --start 4 --duration 8 -o seg1.mp4              # 2) rough cut
-jy concat seg1.mp4 b.mp4 -o rough.mp4                         #    (stream copy when specs match)
-jy asr rough.mp4 -o rough.srt                                 # 3) local speech-to-text (whisper.cpp)
-jy subtitle rough.mp4 --srt rough.srt --style cinematic --max-chars-per-line 14 -o subbed.mp4
-jy text subbed.mp4 --content "Title" --position top --font-size 56 --outline 3 --animation slideup -o titled.mp4
-jy montage a.mp4 b.mp4 c.mp4 --per-clip 2 --transition fade --transition-duration 0.3 -o montage.mp4
-jy beats music.m4a -o beats.txt && jy montage a.mp4 b.mp4 --sync-beats beats.txt -o beatcut.mp4
-jy transition a.mp4 b.mp4 --type 叠化 --duration 0.5 -o joined.mp4   # 剪映 Chinese names or xfade names
-jy filter montage.mp4 --preset film --intensity 70 -o graded.mp4
-jy export graded.mp4 -o final.mp4 --resolution 1080p --fps 30 --quality 20 --faststart
-jy cover final.mp4 --at 50% -o final-cover.mp4
-jy batch *.mp4 -o out/ --resolution 720p --async               # same recipe over many files
-```
-
-### 剪映 engine
-
-```bash
-jy draft build --spec spec.json -o ./draft-out
-jy render ./draft-out -o final.mp4 --async && jy jobs wait <job-id>
-```
-
-```json
-{"canvas":{"width":1080,"height":1920,"fps":30},
- "clips":[{"path":"/abs/a.mp4","start":0,"duration":3}],
- "texts":[{"content":"Title","start":0.5,"duration":2,
-           "position":{"x":0,"y":0.3},
-           "style":{"color":"#FFD400","font_size":14,"stroke_width":0.08}}]}
-```
-
-- Text styling **must** live under `style`; top-level style keys fail with `VALIDATION`.
-- `position` is normalised to the half canvas, y up: `screen_x = W/2 + x·W/2`, `screen_y = H/2 − y·H/2`.
-- `font_size` is 剪映's unit (≈ 6.7 px per unit at 1080 wide).
-- Per-clip `keyframes`, `curve_speed`, `mask`, `color_wheel`, `filter`, `video_effects`, `face_beauty`,
-  `matting`, and per-text `text_effect` / `text_template` / `animations`, plus top-level `effects`,
-  `stickers`, `transitions` are supported — see `USAGE.md` §9. Look up ids with
-  `jy effects search "<name>"`. Unknown keys fail with a suggestion.
-
-### Find 剪映 materials that will actually render
-
-Only packages already downloaded into 剪映's local cache render; an uncached id is silently ignored.
-`jy effects cached [--kind transition|filter|video_effect|text_effect|text_animation|text_template] [--search NAME]`
-lists them (read-only) with a paste-ready `spec` snippet each. Not cached? `jy effects search-remote <keyword>
-[--kind K]` searches every material 剪映's listings know (`status: cached|remote`, `vip`), and
-`jy effects fetch <name|resource_id>` downloads it into 剪映's cache (md5-checked, never overwrites);
-`jy draft build --fetch` does that automatically for names in the spec. In a spec you may give just the name —
-`"transition":{"name":"叠化"}`, `"filters":[{"name":"暗灰电影感","value":0.6}]` — and `jy draft build`
-fills `resource_id` + `path` from the cache (`data.materials_resolved`); an unknown or ambiguous name fails
-with the available choices. `vip:true` materials need a 剪映 membership to export; report it, never bypass.
-
 ## Engine pitfalls
 
-- **剪映 must be running.** If not: `UNAVAILABLE` with "open 剪映 and retry". Do not spin.
+- **剪映 must be running.** Otherwise `UNAVAILABLE` with "open 剪映 and retry" — open it, don't spin.
 - **Cold start**: the first export after launch often times out; `jy` retries once and sets
-  `data.cold_start`. Wait for it instead of retrying manually.
-- **Focus**: 剪映's export may raise its window. `jy` returns focus to the previous app and never moves
-  the pointer; report `data.focus_guard` honestly. Never click the 剪映 UI yourself.
-- **Membership (VIP / SVIP)**: tiers are server-side and unreadable offline. A refusal names the
-  material (id + name). `--on-entitlement local` re-renders with local approximations and lists every
-  loss in `data.degraded_items[]` — tell the user. `jy` never bypasses membership checks.
-- **Material not cached**: `UNSUPPORTED` naming the resource; ask the user to open it once in 剪映.
+  `data.cold_start`. Wait for it instead of retrying manually. `jy render --warmup` pays that cost upfront.
+- **Bridge hung**: `jy render --relaunch-app --warmup`; don't hammer a dead bridge.
+- **Focus**: report `data.focus_guard` honestly; `jy` never moves the pointer.
+- **Membership (VIP / SVIP)**: tiers are server-side. A refusal names the material (id + name).
+  `--on-entitlement local` re-renders with local approximations and lists every loss in
+  `data.degraded_items[]` — only with the user's consent, and tell them. `jy` never bypasses membership.
+- **Downloads**: `effects fetch` network errors are `UNAVAILABLE` (retriable); CDN 401/403 → `BLOCKED`;
+  md5 mismatch or an expired URL → pick a similar material. `search-remote` covers the panels 剪映 has
+  cached; if nothing matches, try a synonym or a similar material.
 - **One render at a time**: a cross-process lock serialises renders; never render in parallel.
-- **Render success ≠ effect applied**: 剪映 silently keeps materials it cannot compose (no change or a
-  black layer). Always pull a frame and look.
+- After 剪映 opens a `jy` draft it may migrate it to a multi-timeline layout (`Timelines/<uuid>/`);
+  `jy` resolves that automatically.
 
-## Local approximations are not 剪映 materials
+## Local engine: tooling, not a substitute
 
-`jy transition / filter / text / beautify / key` are ffmpeg approximations: `beautify` is a global soft
-look (not face-aware), `transition` is xfade, `key` is single-colour chroma key. Each alias reports a
-`data.resolution.fidelity`. Say which one you used when reporting results.
+`jy trim/concat/speed/reverse/transition/filter/text/subtitle/montage/key/beautify/export` are ffmpeg-based:
+use them for **preprocessing** (cut, reverse, speed, transcode, normalise specs, speech-to-subtitles,
+batch resize) and when the user explicitly wants offline. Their 剪映-style names (叠化, 青橙, …) are
+**approximations** reported with `fidelity: exact|close|rough` — not 剪映's material library. `beautify`
+is not face-aware beauty, `key` is not smart matting, `transition` is not 剪映's transition library. Say
+which one you used.
 
-## Delivery discipline
+## Troubleshooting
 
-1. Before delivering, check 2–3 frames: `jy frame out.mp4 --at 10%`, `--at 50%`, `--at 90%` — titles
-   inside the frame, subtitles not clipped, no black frames at transitions.
-2. After 剪映 opens a jy draft it may migrate to `Timelines/<uuid>/`; `jy` resolves this automatically.
-3. Bridge wedged → `jy render ... --relaunch-app` once; do not hammer a dead bridge.
-4. Debug: `jy doctor`, `jy jobs status <id>`, `error.details.tail` (last ffmpeg stderr lines).
+```bash
+jy doctor                       # capabilities, 剪映 state, jobs, membership notes
+jy render ./draft --preflight   # read-only bridge/route/focus check, no export
+jy jobs status <id>             # job state and log path
+jy clean --dry-run              # what caches hold (never touches user dirs by default)
+```
+
+For the full spec field reference (keyframes, masks, color wheels, curve speed, stickers, beauty, matting,
+text templates) see `USAGE.md`.
