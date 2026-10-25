@@ -35,7 +35,7 @@ jy reverse sunrise.mp4 -o sunset.mp4
 jy speed clip.mp4 --factor 2 --no-audio -o fast.mp4
 jy asr talk.mp4 -o talk.srt                     # local speech-to-subtitles
 
-# 3) Pick 剪映 materials: what's installed, then 剪映's catalog (all panels 剪映 has loaded)
+# 3) Pick 剪映 materials: what's installed, then 剪映's full live catalog (offline: falls back to cached panels)
 jy effects cached --kind transition
 jy effects search-remote 推近 --kind transition   # status: cached | remote, plus a vip flag
 jy effects fetch 推近 --kind transition           # downloads into 剪映's cache; usable by name afterwards
@@ -69,7 +69,8 @@ Clip timing: `source_start` = where to start reading the source; `duration` = ho
 on the timeline — **omit it to append after the previous clip** (if given, clips must be in order and not
 overlap, else `VALIDATION`). A transition goes on the **left** clip of the cut.
 
-Every item returned by `jy effects cached` / `search-remote` carries a `spec` field whose key is where it
+Usually just reference materials by `name` in the spec. Items from `jy effects cached` (including anything
+you fetched) also carry a `spec` field whose key is where it
 belongs (`clips[i].transition`, `filters[]`, `effects[]`, `texts[i].animations[]`, …) — copy it as is.
 Material names are 剪映's Chinese names; search with short keywords.
 
