@@ -107,6 +107,8 @@ git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-age
 | `jy render DIR -o out.mp4 [--async] [--on-entitlement fail\|local] [--preflight] [--focus-guard watch\|restore\|off]` | 调剪映原生导出器渲染草稿；带焦点守卫、冷启动重试、崩溃重发现、跨进程渲染锁 |
 | `jy effects list\|search\|params` | 剪映素材目录（内置 269 条：id / 中文名 / 类型 / 参数；可用 ~/.config/jy/effects_catalog.json 覆盖） |
 | `jy effects cached [--kind K] [--search NAME] [--limit N] [--refresh]` | **本机剪映缓存里真正已下载、能渲染的素材**：kind / 中文名 / resource_id / `status:"cached"` / 可直接粘进 spec 的片段（见 §9.2） |
+| `jy effects search-remote KEYWORD [--kind K] [--limit N]` | 搜剪映已知的全部素材（含未下载）：`status cached\|remote`、`vip`、`downloadable`（见 §9.3） |
+| `jy effects fetch NAME\|RESOURCE_ID [--kind K]` | 把素材包下载进剪映缓存（md5 校验、原子解压、不覆盖已有包），之后 `cached` / 按名字解析都能用（见 §9.3） |
 | `jy material status` | 素材图能力自检：哪些类型已证明能渲染、哪些未验证、字体路径 |
 | `jy material register DIR [--apply]` | 把草稿注册进剪映草稿面板（默认 dry-run，自动备份索引） |
 
@@ -248,6 +250,31 @@ jy render draft/ -o out.mp4 --async && jy jobs wait <id>   # 长任务
 `"effects":[{"name":"暗角"}]`、`"animations":[{"type":"in","name":"渐显入场"}]`、`"text_effect":{"name":"…"}`。
 `jy draft build` 会从缓存补全 `resource_id` 和 `path`，并在 `data.materials_resolved[]` 里逐条报告；
 给了 `resource_id` 但没给 `path` 时也会补上 `path`。名字不存在 → `NOT_FOUND`（附可用名字），同名多个 id → `VALIDATION`（请改用 resource_id）。
+
+### 9.3 搜索与下载素材（`jy effects search-remote` / `jy effects fetch` / `draft build --fetch`）
+
+剪映缓存的面板列表里不只有已下载的素材，还记着它见过的所有素材（本机约 8900 条：名字、类型、md5、
+剪映自己用的字节 CDN 下载地址）。
+
+```bash
+jy effects search-remote 推近 --kind transition      # status: remote（可下载）/ cached
+jy effects fetch 推近 --kind transition              # 下载 → Cache/effect/<resource_id>/<md5>/
+jy draft build --spec spec.json -o d --fetch         # spec 里按名字引用、未缓存的素材自动下载
+```
+
+- **怎么下载的**：只用列表里剪映自己的 CDN 地址做普通 HTTPS GET（主机白名单：字节 CDN），不带 cookie、token、设备号，
+  不读账号数据；下载后校验 md5，安全解压（拒绝 `..`/绝对路径），先解到同目录临时文件夹再原子改名为
+  `<resource_id>/<md5>/`，并写 `<md5>_modity_time.txt`。已存在的包**不覆盖**（`outcome:"noop"`）。
+  Artist 系素材（`publish_source` 为 `user_post*`）放 `artistEffect/`，其余放 `effect/`。
+- **结果**：`data.fetched/md5/bytes/files/cache_dir/path` + 可粘贴的 `spec`；之后 `jy effects cached` 会列出它，`draft build` 能按名字解析。
+- **会员素材**：`vip:true` 照样能下载，但非会员账号导出时剪映可能拒绝（`jy render` 报 `BLOCKED`）；jy 只如实标注，不绕过。
+- **失败**：网络错误 → `UNAVAILABLE`（`retriable:true`）；CDN 401/403 → `BLOCKED`；md5 不符/非白名单主机/列表里没有下载地址 →
+  `UNAVAILABLE`/`UNSUPPORTED`（`retriable:false`）；签名地址过期 → `UNAVAILABLE`，提示在剪映里打开一次对应面板刷新列表。
+  `details.attempts[]` 逐个列出尝试过的地址和原因。
+- **范围限制**：只能搜到剪映**加载过的面板**里的素材（列表随你使用剪映而更新）。剪映的在线素材接口没有直接调用：
+  Loki 接口拒绝公开 app key（`access_key does not exist`），Artist 接口需要请求签名，jy 不复刻。
+- 实机验证（剪映 11.6，2026-10-25）：下载 `推近`（转场）、`梦幻渐变紫边白色发光花字`（花字）、`扫光`（文字动画，经 `--fetch`），
+  `draft build` + `jy render` 剪映引擎出片，逐帧可见推近转场、花字描边和扫光。
 
 ## 10. 工程管理
 

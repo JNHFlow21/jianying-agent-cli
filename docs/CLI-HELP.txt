@@ -933,15 +933,18 @@ asset_type 和可用的参数命名空间。不联网、不启动剪映。
 
 positional arguments:
   action
-    list      list catalog entries with per-kind counts
-    search    search catalog entries by Chinese name or id
-    cached    list materials actually downloaded in the local 剪映 cache, by
-              name
-    params    show legal parameter namespaces and their ranges
+    list           list catalog entries with per-kind counts
+    search         search catalog entries by Chinese name or id
+    cached         list materials actually downloaded in the local 剪映 cache,
+                   by name
+    search-remote  search all materials 剪映's cached listings know (cached +
+                   downloadable)
+    fetch          download a 剪映 material package into 剪映's local cache
+    params         show legal parameter namespaces and their ranges
 
 options:
-  -h, --help  show this help message and exit
-  --verbose   stream ffmpeg logs to stderr
+  -h, --help       show this help message and exit
+  --verbose        stream ffmpeg logs to stderr
 
 ## jy effects cached
 
@@ -958,6 +961,35 @@ options:
   --search NAME  substring of the Chinese name (or an exact id)
   --limit N      0 = no limit
   --refresh      rebuild the name index now
+
+## jy effects search-remote
+
+usage: jy effects search-remote [-h] [--kind KIND] [--limit N] KEYWORD
+
+只读：在剪映缓存的面板列表（ressdk_db 副本）里按名字搜素材，含尚未下载的；每条带 status
+cached|remote、vip、downloadable。列表只覆盖剪映加载过的面板。
+
+positional arguments:
+  KEYWORD
+
+options:
+  -h, --help   show this help message and exit
+  --kind KIND  transition/filter/video_effect/text_effect/text_animation/…
+  --limit N    0 = no limit
+
+## jy effects fetch
+
+usage: jy effects fetch [-h] [--kind KIND] NAME|RESOURCE_ID
+
+按名字或 resource_id 下载素材包：地址取自剪映缓存的面板列表（字节 CDN），校验 md5，原子解压到
+Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。
+
+positional arguments:
+  NAME|RESOURCE_ID
+
+options:
+  -h, --help        show this help message and exit
+  --kind KIND       disambiguate a name shared by several kinds
 
 ## jy material
 

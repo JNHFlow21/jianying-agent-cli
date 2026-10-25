@@ -26,8 +26,9 @@ English · [简体中文](README.zh-CN.md)
 - **Headless** — no window, no clicks, no mouse. Runs on a machine nobody is watching.
 - **Agent-friendly** — stdout is always **one `jy.v1` JSON object**; `ok` is the single truth, errors carry a code and `retriable`. ffmpeg logs go to stderr.
 - **Honest output** — every file-producing command re-probes its output with ffprobe, so `ok:true` means a real, playable file.
-- **39 commands** (53 with subcommands) — probe, trim, concat, speed, montage/beat cut, subtitles, ASS text animations, 50+ transitions, filters/LUTs, curves/HSL, chroma key, picture-in-picture, audio mix/ducking/loudnorm, local ASR, covers, GIF, batch export, background jobs.
+- **39 commands** (56 with subcommands) — probe, trim, concat, speed, montage/beat cut, subtitles, ASS text animations, 50+ transitions, filters/LUTs, curves/HSL, chroma key, picture-in-picture, audio mix/ducking/loudnorm, local ASR, covers, GIF, batch export, background jobs.
 - **Two engines** — **local** (ffmpeg, offline, deterministic) by default; **jianying** renders drafts through the 剪映 app you already have installed, for its native materials.
+- **Finds and fetches 剪映 materials** — `jy effects search-remote 推近` searches the materials 剪映 knows, `jy effects fetch 推近` downloads the package into 剪映's cache (md5-checked, atomic), and a spec can just say `"transition":{"name":"推近"}` — `jy draft build --fetch` resolves and downloads by name.
 - **Speaks 剪映** — `jy transition --type 叠化`, `jy filter --preset 日系`: Chinese 剪映 names resolve to a local implementation and report how close they are (`fidelity: exact | close | rough`).
 - **Zero Python dependencies** — standard library + ffmpeg. Ships an [agent skill](skills/jianying-native/SKILL.md) so your agent knows how to use it.
 

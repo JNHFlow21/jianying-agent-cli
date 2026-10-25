@@ -2221,6 +2221,93 @@ bad = dict(spec, filters=[{"name": "不存在"}])
 payload = run(["draft", "build", "--spec", "bad.json", "-o", "bad", "--no-staging", "--force"], env=env, cwd=spec_dir)
 check("unknown name NOT_FOUND", (payload.get("error") or {}).get("code") == "NOT_FOUND", str(payload.get("error"))[:200])
 
+# --- search-remote / fetch against a local mock CDN (no network) ---
+import hashlib, http.server, io, threading, zipfile
+
+
+def make_zip(files):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+good = make_zip({"config.json": "{}", "AmazingAuto_out/main.scene": "x", "../evil.txt": "no"})
+good_md5 = hashlib.md5(good).hexdigest()
+other = make_zip({"config.json": "{\"v\":2}"})
+other_md5 = hashlib.md5(other).hexdigest()
+blobs = {f"/{good_md5}": good, f"/{other_md5}": other, "/badmd5": good}
+
+
+class Mock(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/forbidden":
+            self.send_response(403); self.end_headers(); return
+        body = blobs.get(self.path)
+        if body is None:
+            self.send_response(404); self.end_headers(); return
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Mock)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+base = f"http://127.0.0.1:{server.server_address[1]}"
+remote = [  # rid, name, type, md5, url
+    ("7100000000000000019", "测试推近", 19, good_md5, f"{base}/{good_md5}"),
+    ("7100000000000000018", "测试扫光", 18, other_md5, f"{base}/{other_md5}"),
+    ("7100000000000000007", "坏校验", 7, "f" * 32, f"{base}/badmd5"),
+    ("7100000000000000008", "被拒绝", 7, "e" * 32, f"{base}/forbidden"),
+    ("7100000000000000009", "非白名单", 7, "d" * 32, "https://evil.example.com/x"),
+    ("7100000000000000010", "连不上", 7, "c" * 32, "http://127.0.0.1:9/x"),
+]
+conn = sqlite3.connect(str(db_dir / "rp.db"))
+conn.execute("INSERT INTO http_cache (url, response_body) VALUES (?, ?)", ("/artist/v1/x2", json.dumps(
+    {"data": {"categories": [{"category_name": "入场", "effects": [
+        {"id": rid, "effect_id": rid, "title": name, "effect_type": t, "md5": md5, "item_urls": [url],
+         "publish_source": "loki", "extra": "{\"is_vip\":true}"} for rid, name, t, md5, url in remote]}]}})))
+conn.commit()
+conn.close()
+fenv = dict(env, JY_FETCH_ALLOW_LOOPBACK="1")
+payload = run(["effects", "search-remote", "测试推近"], env=fenv)
+row = ((payload.get("data") or {}).get("items") or [{}])[0]
+check("search-remote finds remote", row.get("status") == "remote" and row.get("downloadable") is True and row.get("vip") is True, str(row))
+payload = run(["effects", "search-remote", "测试叠化"], env=fenv)
+check("search-remote marks cached", ((payload.get("data") or {}).get("items") or [{}])[0].get("status") == "cached", str(payload.get("data"))[:200])
+payload = run(["effects", "fetch", "测试推近"], env=fenv)
+data = payload.get("data") or {}
+pkg = root / "effect" / "7100000000000000019" / good_md5
+check("fetch executed", payload.get("outcome") == "executed" and data.get("fetched") is True, str(payload)[:300])
+check("fetch layout", (pkg / "config.json").is_file() and (pkg / "AmazingAuto_out" / "main.scene").is_file(), str(pkg))
+check("fetch blocks zip traversal", not (root / "effect" / "7100000000000000019" / "evil.txt").exists() and not (pkg.parent.parent / "evil.txt").exists(), "")
+check("fetch writes modity_time", (pkg.parent / f"{good_md5}_modity_time.txt").is_file(), "")
+check("fetch leaves no temp dirs", not [p for p in pkg.parent.iterdir() if p.name.startswith(".jy-fetch")], "")
+check("fetch reports vip warning", any("会员" in w for w in payload.get("warnings") or []), str(payload.get("warnings")))
+payload = run(["effects", "fetch", "7100000000000000019"], env=fenv)
+check("refetch is noop", payload.get("outcome") == "noop", str(payload)[:200])
+payload = run(["effects", "cached", "--kind", "transition", "--limit", "0"], env=fenv)
+check("fetched shows in cached", "测试推近" in [i["name"] for i in (payload.get("data") or {}).get("items") or []], str(payload.get("data"))[:300])
+for name, code, retriable in (("坏校验", "UNAVAILABLE", False), ("被拒绝", "BLOCKED", False),
+                              ("非白名单", "UNAVAILABLE", False), ("连不上", "UNAVAILABLE", True)):
+    payload = run(["effects", "fetch", name], env=fenv)
+    err = payload.get("error") or {}
+    check(f"fetch {name} -> {code}", err.get("code") == code and bool(err.get("retriable")) == retriable, str(err)[:300])
+check("failed fetch wrote nothing", not (root / "effect" / "7100000000000000007").exists() or not any(
+    p.is_dir() and not p.name.startswith(".") for p in (root / "effect" / "7100000000000000007").iterdir()), "")
+fspec = json.loads(json.dumps(spec))
+fspec["texts"][0]["animations"] = [{"type": "in", "name": "测试扫光", "duration": 0.3}]
+(spec_dir / "fetch.json").write_text(json.dumps(fspec, ensure_ascii=False), "utf-8")
+payload = run(["draft", "build", "--spec", "fetch.json", "-o", "fdraft", "--no-staging", "--force"], env=fenv, cwd=spec_dir)
+check("uncached name without --fetch NOT_FOUND", (payload.get("error") or {}).get("code") == "NOT_FOUND", str(payload.get("error"))[:200])
+payload = run(["draft", "build", "--spec", "fetch.json", "-o", "fdraft", "--no-staging", "--force", "--fetch"], env=fenv, cwd=spec_dir)
+fetched = [r for r in (payload.get("data") or {}).get("materials_resolved") or [] if r.get("fetched")]
+check("draft build --fetch downloads", payload.get("ok") is True and len(fetched) == 1, str(payload.get("error") or payload.get("data", {}).get("materials_resolved"))[:300])
+server.shutdown()
+
 print(json.dumps({"ok": not failures, "failures": failures}, ensure_ascii=False))
 raise SystemExit(0 if not failures else 1)
 PY
@@ -2228,6 +2315,20 @@ if cc_out="$("$PY" "$WORK/cached_check.py" "$JY" "$WORK" 2>&1)"; then
     pass "effects cached + by-name draft build + relative staging [$(echo "$cc_out" | head -c 160)]"
 else
     fail "effects cached checks" "$(echo "$cc_out" | tail -c 800)"
+fi
+if [[ "${JY_LIVE_FETCH:-}" == "1" && -d "$HOME/Movies/JianyingPro/User Data/Cache/ressdk_db" ]]; then
+    # live CDN fetch into a COPY of the listings, never into the real 剪映 cache
+    LIVE="$WORK/live-cache"; mkdir -p "$LIVE/effect"
+    cp -R "$HOME/Movies/JianyingPro/User Data/Cache/ressdk_db" "$LIVE/"
+    run_jy_env() { JY_JIANYING_CACHE="$LIVE" "$JY" "$@" > "$OUT" 2> "$ERR"; RC=$?; }
+    run_jy_env effects fetch 推近 --kind transition
+    if [[ $RC -eq 0 ]] && ls "$LIVE/effect/6724226861666144779/"*/config.json >/dev/null 2>&1; then
+        pass "live fetch 推近 from the CDN (JY_LIVE_FETCH=1)"
+    else
+        fail "live fetch" "rc=$RC $(head -c 300 "$OUT")"
+    fi
+else
+    skip "live CDN fetch (set JY_LIVE_FETCH=1 on a machine with 剪映)"
 fi
 REAL_JY_CACHE="$HOME/Movies/JianyingPro/User Data/Cache"
 if [[ -d "$REAL_JY_CACHE/effect" ]]; then

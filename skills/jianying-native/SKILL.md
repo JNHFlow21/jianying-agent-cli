@@ -89,10 +89,13 @@ jy render ./draft-out -o final.mp4 --async && jy jobs wait <job-id>
 
 Only packages already downloaded into 剪映's local cache render; an uncached id is silently ignored.
 `jy effects cached [--kind transition|filter|video_effect|text_effect|text_animation|text_template] [--search NAME]`
-lists them (read-only) with a paste-ready `spec` snippet each. In a spec you may give just the name —
+lists them (read-only) with a paste-ready `spec` snippet each. Not cached? `jy effects search-remote <keyword>
+[--kind K]` searches every material 剪映's listings know (`status: cached|remote`, `vip`), and
+`jy effects fetch <name|resource_id>` downloads it into 剪映's cache (md5-checked, never overwrites);
+`jy draft build --fetch` does that automatically for names in the spec. In a spec you may give just the name —
 `"transition":{"name":"叠化"}`, `"filters":[{"name":"暗灰电影感","value":0.6}]` — and `jy draft build`
 fills `resource_id` + `path` from the cache (`data.materials_resolved`); an unknown or ambiguous name fails
-with the available choices. Need something not listed? Open it once in 剪映 so it downloads.
+with the available choices. `vip:true` materials need a 剪映 membership to export; report it, never bypass.
 
 ## Engine pitfalls
 

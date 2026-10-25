@@ -215,7 +215,7 @@ def draft_build(ctx, args):
         raise JyError("VALIDATION", f"spec 不是合法 JSON：{args.spec}（{exc}）") from exc
 
     # materials given by name (or without a cache path) -> resource_id + path from 剪映's cache
-    resolved = jianying_cache.resolve_spec(raw_spec)
+    resolved = jianying_cache.resolve_spec(raw_spec, fetch=bool(getattr(args, "fetch", False)))
     props = draft_spec.validate_spec(raw_spec, where="spec")
     effective_spec = spec_path
     staging = None
@@ -517,6 +517,10 @@ def register(r):
     build.add_argument("--spec", required=True, metavar="FILE", help="JSON 时间线 spec")
     build.add_argument(
         "--no-staging", action="store_true", help="reference the original paths (no copy)"
+    )
+    build.add_argument(
+        "--fetch", action="store_true",
+        help="download materials named in the spec that are not cached yet (`jy effects fetch`)",
     )
     build.add_argument(
         "--staging-dir", metavar="DIR", help="override the staging dir (default $JY_STAGING_DIR or ~/Movies/jy-staging)"

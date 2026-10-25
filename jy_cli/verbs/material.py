@@ -125,6 +125,7 @@ def effects_cached(ctx, args):
     from .. import jianying_cache
 
     data = jianying_cache.index(refresh=bool(args.refresh))
+    jianying_cache.require_packages(data)
     rows = data["items"]
     if args.kind:
         rows = [row for row in rows if row["kind"] == args.kind]
@@ -154,6 +155,55 @@ def effects_cached(ctx, args):
         "note": "只列本机剪映已下载的素材包（未缓存的 id 渲染时会被静默忽略）。spec 里也可以只写 name，"
         "`jy draft build` 会按名字从缓存补全 resource_id 和 path；spec 为 null 的种类 draft build 还不支持。",
     }
+
+
+def _public(row, with_spec):
+    from .. import jianying_cache
+
+    item = {key: row.get(key) for key in ("kind", "name", "resource_id", "status", "category", "vip")}
+    if row.get("animation_type"):
+        item["animation_type"] = row["animation_type"]
+    if "downloadable" in row:
+        item["downloadable"] = row["downloadable"]
+    if with_spec:
+        item["spec"] = jianying_cache.spec_snippet(row) if row.get("path") else None
+    return item
+
+
+def effects_search_remote(ctx, args):
+    """Search every material 剪映's cached panel listings know, downloaded or not."""
+    from .. import jianying_cache
+
+    data, rows = jianying_cache.search_known(args.keyword, kind=args.kind, limit=args.limit)
+    if not rows:
+        raise JyError(
+            "NOT_FOUND",
+            f"剪映缓存的素材列表里没有匹配 {args.keyword!r} 的素材；在剪映里浏览一次对应面板可刷新列表",
+            details={"keyword": args.keyword, "kind": args.kind},
+        )
+    return "readonly", {
+        "cache_root": data["cache_root"],
+        "known": len(data["catalog"]),
+        "returned": len(rows),
+        "items": [_public(row, with_spec=False) for row in rows],
+        "source": "剪映 cached panel listings (Cache/ressdk_db http_cache, read from a copy)",
+        "note": "status=remote 的素材可用 `jy effects fetch <名字|resource_id>` 下载；"
+        "vip=true 需要剪映会员才能导出。列表只包含剪映曾经加载过的面板。",
+    }
+
+
+def effects_fetch(ctx, args):
+    """Download one material package into 剪映's cache layout."""
+    from .. import jianying_cache
+
+    row = jianying_cache.fetch_material(args.target, kind=args.kind)
+    item = _public(row, with_spec=True)
+    for key in ("fetched", "reason", "md5", "bytes", "files", "cache_dir"):
+        if key in row:
+            item[key] = row[key]
+    if row.get("vip"):
+        ctx.warnings.append(f"「{row['name']}」是会员素材：非会员账号导出时剪映可能拒绝（BLOCKED），jy 不会绕过")
+    return ("executed" if row.get("fetched") else "noop"), item
 
 
 def material_status(ctx, args):
@@ -206,6 +256,26 @@ def register(r):
     cached.add_argument("--limit", type=int, default=50, metavar="N", help="0 = no limit")
     cached.add_argument("--refresh", action="store_true", help="rebuild the name index now")
     r.bind(cached, "effects cached", effects_cached)
+
+    remote = effects_sub.add_parser(
+        "search-remote", help="search all materials 剪映's cached listings know (cached + downloadable)",
+        description="只读：在剪映缓存的面板列表（ressdk_db 副本）里按名字搜素材，含尚未下载的；"
+        "每条带 status cached|remote、vip、downloadable。列表只覆盖剪映加载过的面板。",
+    )
+    remote.add_argument("keyword", metavar="KEYWORD")
+    remote.add_argument("--kind", metavar="KIND",
+                        help="transition/filter/video_effect/text_effect/text_animation/…")
+    remote.add_argument("--limit", type=int, default=20, metavar="N", help="0 = no limit")
+    r.bind(remote, "effects search-remote", effects_search_remote)
+
+    fetch = effects_sub.add_parser(
+        "fetch", help="download a 剪映 material package into 剪映's local cache",
+        description="按名字或 resource_id 下载素材包：地址取自剪映缓存的面板列表（字节 CDN），"
+        "校验 md5，原子解压到 Cache/<effect|artistEffect>/<resource_id>/<md5>/；已存在则不动。",
+    )
+    fetch.add_argument("target", metavar="NAME|RESOURCE_ID")
+    fetch.add_argument("--kind", metavar="KIND", help="disambiguate a name shared by several kinds")
+    r.bind(fetch, "effects fetch", effects_fetch)
 
     params = effects_sub.add_parser(
         "params", help="show legal parameter namespaces and their ranges",
