@@ -1,17 +1,17 @@
 <div align="center">
 
-# jianying-native (`jy`)
+# jianying-agent-cli (`jy`)
 
 **Headless video editing CLI for AI agents — ffmpeg plus optional native rendering through your own 剪映专业版 (JianyingPro / CapCut China desktop).**
 
 Cut, concat, subtitles, titles, transitions, filters, keying, audio, keyframes, batch export — every call prints exactly one JSON object, so Claude Code, Codex or any script can drive it without a GUI.
 
-[![test](https://github.com/JNHFlow21/jianying-native/actions/workflows/test.yml/badge.svg)](https://github.com/JNHFlow21/jianying-native/actions/workflows/test.yml)
+[![test](https://github.com/JNHFlow21/jianying-agent-cli/actions/workflows/test.yml/badge.svg)](https://github.com/JNHFlow21/jianying-agent-cli/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-D97757.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-6A9BCC.svg)
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
 ![No pip deps](https://img.shields.io/badge/deps-ffmpeg%20only-2ea44f.svg)
-[![GitHub stars](https://img.shields.io/github/stars/JNHFlow21/jianying-native?style=social)](https://github.com/JNHFlow21/jianying-native/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/JNHFlow21/jianying-agent-cli?style=social)](https://github.com/JNHFlow21/jianying-agent-cli/stargazers)
 
 English · [简体中文](README.zh-CN.md)
 
@@ -32,7 +32,7 @@ English · [简体中文](README.zh-CN.md)
 ## Install
 
 ```sh
-git clone https://github.com/JNHFlow21/jianying-native.git && cd jianying-native && python3 install_global.py
+git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-agent-cli && python3 install_global.py
 ```
 
 Needs Python 3.9+ and ffmpeg. `brew install ffmpeg-full` is recommended (libass for subtitles/text, x264/x265, zimg); plain `ffmpeg` works and `jy` degrades per capability instead of pretending. The installer symlinks `jy` into `~/.local/bin` (an existing non-`jy` file there is moved to `jy.bak-<time>`, never deleted). Then:
@@ -69,7 +69,7 @@ The repo ships an [Agent Skill](skills/jianying-native/SKILL.md) (rules, the `jy
 ```sh
 python3 install_global.py --with-skill     # copies the skill to ~/.claude/skills and ~/.agents/skills (backs up existing)
 # or, with the skills CLI:
-npx skills add JNHFlow21/jianying-native
+npx skills add JNHFlow21/jianying-agent-cli
 # or by hand:
 cp -r skills/jianying-native ~/.claude/skills/     # Claude Code
 cp -r skills/jianying-native ~/.agents/skills/     # Codex and other Agent Skills hosts
@@ -172,6 +172,6 @@ This is an unofficial, independent tool. It is not affiliated with, endorsed by,
 
 If `jy` saved you an afternoon of ffmpeg flags, a ⭐ helps other people (and their agents) find it.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JNHFlow21/jianying-native&type=Date)](https://star-history.com/#JNHFlow21/jianying-native&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=JNHFlow21/jianying-agent-cli&type=Date)](https://star-history.com/#JNHFlow21/jianying-agent-cli&Date)
 
 [MIT](LICENSE)

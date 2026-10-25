@@ -14,7 +14,7 @@ jy doctor                      # 先跑这个：两套 ffmpeg 能力 + 剪映状
 ## 1. 安装
 
 ```bash
-git clone https://github.com/JNHFlow21/jianying-native.git && cd jianying-native
+git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-agent-cli
 ./install_global.py            # 软链到 ~/.local/bin/jy（已存在的非 jy 文件会先备份）
 ./install_global.py --with-skill   # 同时把 agent skill 装进 ~/.claude/skills 与 ~/.agents/skills
 ./install_global.py --dry-run   # 只看会做什么

@@ -7,5 +7,5 @@ the bridge context.
 
 If you find a way `jy` leaks a credential, writes outside the paths it documents, or modifies a
 剪映 draft it did not create without `--apply`, please report it privately via
-[GitHub Security Advisories](https://github.com/JNHFlow21/jianying-native/security/advisories/new)
+[GitHub Security Advisories](https://github.com/JNHFlow21/jianying-agent-cli/security/advisories/new)
 rather than a public issue.

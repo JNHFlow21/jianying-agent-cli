@@ -47,7 +47,7 @@ README/`--help`/`data.note` 里写清楚。
 ## 快速开始
 
 ```bash
-cd jianying-native
+cd jianying-agent-cli
 ./bin/jy doctor                                   # 看两个 ffmpeg 构建、版本、滤镜/编码器矩阵 + 特效能力
 
 # 3 个最常用示例
@@ -703,7 +703,7 @@ jy clean --all --apply                   # 以上全部
 ## 测试
 
 ```bash
-cd jianying-native
+cd jianying-agent-cli
 ./tests/smoke.sh
 ```
 
