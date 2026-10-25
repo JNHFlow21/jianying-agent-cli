@@ -913,6 +913,8 @@ if [[ -s "$WORK/doctor.json" ]] \
     expect_field "montage: 3*1.5 - 2*0.3 = 3.9s" duration 3.7 4.1
     expect_field "montage: normalised to input 0" dims 1280 720
     expect_field "montage: segments" segments 3
+    expect_output "montage accepts 剪映 中文名 (叠化 -> fade)" montage a.mp4 b.mp4 \
+        --per-clip 1.0 --transition 叠化 --transition-duration 0.3 -o "$OUTDIR/m_zh.mp4"
     expect_output "montage concat (no transition, audio kept)" montage a.mp4 b.mp4 \
         --per-clip 1.0 -o "$OUTDIR/m_cat.mp4"
     expect_field "montage concat: 2.0s" duration 1.8 2.2

@@ -280,6 +280,18 @@ def transition(ctx, args):
     return outcome, data
 
 
+def montage(ctx, args):
+    """Montage with the same 剪映 中文名 / xfade resolution as `transition`."""
+    if str(args.transition).strip().lower() in ("none", ""):
+        return commands.montage(ctx, args)
+    resolution = resolve_transition(args.transition)
+    args.transition = resolution["resolved"]
+    _warn_rough(ctx, resolution)
+    outcome, data = commands.montage(ctx, args)
+    data["resolution"] = resolution
+    return outcome, data
+
+
 def filter_look(ctx, args):
     """Filter by 剪映 中文名 / local preset / LUT, with an explicit fidelity report."""
     if getattr(args, "list", False):
@@ -434,7 +446,7 @@ def register(r):
     )
     r.bind(text, "text", commands.text)
 
-    montage = r.parser_for(
+    montage_parser = r.parser_for(
         "montage",
         parents=[r.output_parent],
         help="cut clips into segments and join them (蒙太奇 / beat cut)",
@@ -443,8 +455,8 @@ def register(r):
         "(optionally with an xfade transition; 剪映 中文名 accepted too). "
         "Normalised to the first clip.",
     )
-    montage.add_argument("inputs", nargs="+", metavar="input")
-    mode = montage.add_mutually_exclusive_group(required=True)
+    montage_parser.add_argument("inputs", nargs="+", metavar="input")
+    mode = montage_parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
         "--per-clip", type=float, metavar="SEC", help="equal segment length per clip"
     )
@@ -453,11 +465,11 @@ def register(r):
         metavar="FILE",
         help="cut-timestamp file (milliseconds per line); one clip per cut",
     )
-    montage.add_argument(
+    montage_parser.add_argument(
         "--transition", default="none", metavar="NAME", help="xfade name, 剪映 中文名, or none"
     )
-    montage.add_argument("--transition-duration", type=float, default=0.3, metavar="SEC")
-    r.bind(montage, "montage", commands.montage)
+    montage_parser.add_argument("--transition-duration", type=float, default=0.3, metavar="SEC")
+    r.bind(montage_parser, "montage", montage)
 
     look = r.parser_for(
         "filter",
