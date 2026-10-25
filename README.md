@@ -15,9 +15,9 @@ Cut, concat, subtitles, titles, transitions, filters, keying, audio, keyframes, 
 
 English · [简体中文](README.zh-CN.md)
 
-![jy demo: an agent runs jy probe, reverse, speed, montage with a 叠化 dissolve, the 青橙 filter, subtitle and export in a terminal, each printing one JSON line, then the finished 10-second film "Nightfall" plays](docs/demo.gif)
+![jy demo: an agent pre-processes clips with jy probe, reverse and speed, then builds a 剪映 draft with 叠化 transitions, the 暗灰电影感 filter, a 暗角 vignette and 渐显入场 text animations and renders it with jy render on 剪映's native engine; each command prints one JSON line, then the finished 12-second film "Nightfall" plays](docs/demo.gif)
 
-<sub>Cut entirely with <code>jy</code> from public-domain U.S. National Park Service time-lapses — <a href="docs/DEMO-CREDITS.md">footage credits</a> · <a href="docs/demo.mp4">MP4 version</a></sub>
+<sub>Rendered by 剪映's own engine, driven headlessly by <code>jy draft build</code> + <code>jy render</code> — real 剪映 transitions, filter, effect and text animation on public-domain U.S. National Park Service time-lapses — <a href="docs/DEMO-CREDITS.md">footage credits</a> · <a href="docs/demo.mp4">MP4 version</a></sub>
 
 </div>
 
@@ -163,7 +163,7 @@ Then delete the cloned folder. `~/Movies/jy-staging` exists only if you used the
 ```sh
 ./tests/smoke.sh                     # end-to-end suite on synthetic media; 剪映 checks skip when the app is not running
 JY_SMOKE_RENDER=1 ./tests/smoke.sh   # also run one real 剪映 export (needs 剪映 running)
-python3 docs/render_demo.py          # regenerate docs/demo.gif + demo.mp4 (downloads public-domain footage; needs Chrome, ffmpeg, jq, gifsicle)
+python3 docs/render_demo.py          # regenerate docs/demo.gif + demo.mp4 with 剪映 running (--engine local: ffmpeg only); needs Chrome, ffmpeg, jq, gifsicle
 ```
 
 ## Disclaimer

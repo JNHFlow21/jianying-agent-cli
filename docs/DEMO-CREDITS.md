@@ -1,11 +1,12 @@
 # Demo footage credits
 
-The README demo (`docs/demo.gif`, `docs/demo.mp4`) is a 10-second film, *Nightfall*, cut with `jy`
+The README demo (`docs/demo.gif`, `docs/demo.mp4`) is a 12-second film, *Nightfall*, rendered by 剪映's native engine through `jy draft build` + `jy render`,
 from five time-lapses published on Wikimedia Commons. All five are works of U.S. National Park
 Service employees and are in the **public domain** in the United States (`{{PD-USGov-NPS}}`).
 The raw footage is not stored in this repository; `docs/render_demo.py` downloads it from the
-URLs below. Edits applied: trim, reverse (clip 1), 3.6× speed, 叠化 dissolves, 青橙 grade at 60 %,
-burned-in titles.
+URLs below. Edits applied: trim, reverse (clip 1) and 3.6× speed with jy's local engine, then 剪映
+materials 叠化 (transition), 暗灰电影感 (filter, 60 %), 暗角 (video effect) and 渐显入场 (text animation)
+in the native render. `python3 docs/render_demo.py --engine local` rebuilds an ffmpeg-only variant.
 
 | # | Title | Author | Source | License |
 |---|-------|--------|--------|---------|

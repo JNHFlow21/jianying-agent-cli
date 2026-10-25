@@ -5,14 +5,21 @@ Everything is reproducible from public-domain footage (U.S. National Park Servic
 time-lapses on Wikimedia Commons, see docs/DEMO-CREDITS.md). The script:
 
   1. downloads the five source clips by URL (never touches local media),
-  2. edits them with `jy` itself (trim, reverse, speed, montage + 叠化,
-     filter 青橙, ASS titles, export) — local ffmpeg engine only, no 剪映,
+  2. pre-processes them with jy's local engine (trim, reverse, speed) and then
+     edits the film with `jy` itself:
+       --engine jianying (default, what the README shows): `jy draft build` + `jy render`
+         — 剪映's own native engine renders genuine 剪映 materials (叠化 transitions,
+         暗灰电影感 filter, 暗角 video effect, 渐显入场 text animation). Needs 剪映专业版
+         desktop running and those materials in its local cache (open each once in 剪映).
+         The draft lives in this script's temp dir; nothing is added to your 剪映 projects.
+       --engine local: the same film with ffmpeg approximations only (montage + 叠化,
+         filter 青橙, ASS titles, export) — no 剪映 needed.
   3. renders the terminal + player stage with headless Chrome,
   4. composites the finished film into the stage and encodes GIF + MP4.
 
 Needs macOS Google Chrome, ffmpeg (ffmpeg-full recommended), jq, gifsicle, and network
 for the first run. Usage:
-    python3 docs/render_demo.py [--footage-dir DIR] [--keep]
+    python3 docs/render_demo.py [--engine jianying|local] [--footage-dir DIR] [--keep]
 --footage-dir caches the downloads between runs (default: a temp dir).
 """
 import argparse, concurrent.futures, html, json, os, re, shutil, subprocess, sys, tempfile
@@ -34,7 +41,21 @@ FOOTAGE = {
 }
 
 # The agent session shown in the terminal: real commands, real (jq-trimmed) output.
-CMDS = [
+PREP = [
+    "jy probe clips/*.mp4 | jq -c '{ok, seconds: [.data.files[].duration_s]}'",
+    "jy reverse clips/sunrise.mp4 -o clips/sunset.mp4 | jq -c '{ok, outcome}'",
+    "for c in sunset valley dusk rock stars; do jy speed clips/$c.mp4 --factor 3.6 --no-audio -o fast/$c.mp4; done"
+    " | jq -sc '{ok: (map(.ok) | all), clips: length}'",
+]
+JIANYING_CMDS = PREP + [
+    "jq -c '{transitions: [.clips[].transition.name // empty], filter: .filters[0].name, effect: .effects[0].name,"
+    " title: .texts[0].content}' nightfall.json",
+    "jy draft build --spec nightfall.json -o jy-demo-nightfall"
+    " | jq -c '{ok, engine: .data.engine, tracks: [.data.tracks[].type]}'",
+    "jy render jy-demo-nightfall -o nightfall.mp4"
+    " | jq -c '{ok, engine: .data.engine, output: .data.output | {codec, width, height, duration_s}}'",
+]
+LOCAL_CMDS = [
     "jy probe clips/*.mp4 | jq -c '{ok, seconds: [.data.files[].duration_s]}'",
     "jy reverse clips/sunrise.mp4 -o clips/sunset.mp4 | jq -c '{ok, outcome}'",
     "for c in sunset valley dusk rock stars; do jy speed clips/$c.mp4 --factor 3.6 --no-audio -o fast/$c.mp4; done"
@@ -45,6 +66,49 @@ CMDS = [
     "jy subtitle graded.mp4 --srt titles.ass -o titled.mp4 | jq -c '{ok, outcome}'",
     "jy export titled.mp4 -o nightfall.mp4 --resolution 1080p --faststart | jq -c '.data.output | {codec, width, height, duration_s}'",
 ]
+
+# 剪映 materials for the native render: (cache subdir, resource_id, name). They must already be
+# in 剪映's local cache — jy never invents ids, and an uncached package renders as a no-op.
+JY_CACHE = os.path.expanduser("~/Movies/JianyingPro/User Data/Cache")
+JY_MATERIALS = {
+    "transition": ("effect", "6724845717472416269", "叠化"),
+    "filter": ("artistEffect", "7682752012542332169", "暗灰电影感"),
+    "effect": ("effect", "7399495012515433728", "暗角"),
+    "text_in": ("effect", "7660452282344983851", "渐显入场"),
+}
+SHOT = 2.4  # seconds per shot in the 剪映 timeline; transitions overlap the junctions
+CAPTIONS = [("blue hour", 2.6, 1.6), ("starlight", 5.0, 1.6), ("moonlit clouds", 7.4, 1.6),
+            ("made with jy", 9.8, 2.0)]
+FONT = "/System/Library/Fonts/Avenir Next.ttc"
+
+
+def jy_package(kind):
+    sub, rid, name = JY_MATERIALS[kind]
+    base = os.path.join(JY_CACHE, sub, rid)
+    pkgs = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))] if os.path.isdir(base) else []
+    if not pkgs:
+        raise SystemExit(f"剪映 material {name} ({rid}) is not cached; open it once in 剪映, then retry")
+    return {"resource_id": rid, "name": name, "path": os.path.join(base, pkgs[0])}
+
+
+def jianying_spec():
+    names = ["sunset", "valley", "dusk", "rock", "stars"]
+    clips = []
+    for i, n in enumerate(names):
+        clip = {"path": f"fast/{n}.mp4", "start": round(i * SHOT, 3), "duration": SHOT}
+        if i < len(names) - 1:
+            clip["transition"] = dict(jy_package("transition"), duration=0.6)
+        clips.append(clip)
+
+    def text(content, start, dur, y, size, tracking, anim):
+        return {"content": content, "start": start, "duration": dur, "position": {"x": 0, "y": y},
+                "style": {"color": "#FFFFFF", "font_size": size, "stroke_width": 0.0, "bold": False,
+                          "letter_spacing": tracking, "font_path": FONT},
+                "animations": [dict(jy_package("text_in"), type="in", duration=anim)]}
+    texts = [text("NIGHTFALL", 0.3, 1.9, -0.12, 16, 0.35, 0.8)]
+    texts += [text(c, s, d, -0.8, 5.6, 0.12, 0.4) for c, s, d in CAPTIONS]
+    return {"canvas": {"width": 1920, "height": 1080, "fps": 30}, "clips": clips, "texts": texts,
+            "filters": [dict(jy_package("filter"), value=0.6)], "effects": [jy_package("effect")]}
 
 # Title card + captions, burned by `jy subtitle`. Styling is inline (\fn \fs \fsp) because
 # `jy subtitle` applies FontName/FontSize via force_style to every style in the file.
@@ -197,6 +261,16 @@ def page(term_html, tp=0.0, fp=0.0, poster="", cap_html=""):
 
 def screenshot(job):
     hp, pp = job
+    for attempt in range(3):  # headless Chrome occasionally exits early under load
+        try:
+            return _shot(hp, pp)
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(1)
+
+
+def _shot(hp, pp):
     sh([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
         "--default-background-color=00000000", f"--window-size={W},{H}", "--force-device-scale-factor=2",
         "--virtual-time-budget=1500", f"--screenshot={pp}", "file://" + hp], capture_output=True, timeout=90)
@@ -210,13 +284,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--footage-dir", help="cache dir for the downloaded public-domain clips")
     ap.add_argument("--keep", action="store_true", help="keep the scratch dir (prints its path)")
+    ap.add_argument("--engine", choices=("jianying", "local"), default="jianying",
+                    help="jianying = 剪映 native render (default, needs 剪映 running); local = ffmpeg only")
     a = ap.parse_args()
+    native = a.engine == "jianying"
+    cmds = JIANYING_CMDS if native else LOCAL_CMDS
     S = tempfile.mkdtemp(prefix="jy-demo-")
     raw = os.path.abspath(a.footage_dir) if a.footage_dir else os.path.join(S, "footage")
     run, fr = os.path.join(S, "run"), os.path.join(S, "frames")
     for d in (raw, os.path.join(run, "clips"), os.path.join(run, "fast"), fr):
         os.makedirs(d, exist_ok=True)
-    env = dict(os.environ, PATH=os.path.join(ROOT, "bin") + os.pathsep + os.environ["PATH"])
+    # JY_STAGING_DIR keeps draft media in the temp dir instead of ~/Movies/jy-staging
+    env = dict(os.environ, PATH=os.path.join(ROOT, "bin") + os.pathsep + os.environ["PATH"],
+               JY_STAGING_DIR=os.path.join(S, "staging"))
 
     # 1. footage -> clips/*.mp4 (download, then `jy trim` to the usable section)
     for name, (url, start, dur) in FOOTAGE.items():
@@ -224,12 +304,16 @@ def main():
         fetch(url, src)
         sh(["jy", "trim", src, "--start", str(start), "--duration", str(dur), "-o",
             os.path.join(run, "clips", name + ".mp4"), "--force"], env=env, capture_output=True)
-    with open(os.path.join(run, "titles.ass"), "w", encoding="utf-8") as f:
-        f.write(titles_ass())
+    if native:
+        with open(os.path.join(run, "nightfall.json"), "w", encoding="utf-8") as f:
+            json.dump(jianying_spec(), f, ensure_ascii=False, indent=1)
+    else:
+        with open(os.path.join(run, "titles.ass"), "w", encoding="utf-8") as f:
+            f.write(titles_ass())
 
     # 2. the agent session — every command really runs; output is shown verbatim
     pairs = []
-    for cmd in CMDS:
+    for cmd in cmds:
         p = subprocess.run(cmd, shell=True, cwd=run, env=env, capture_output=True, text=True,
                            executable="/bin/bash")
         out = p.stdout.strip()
@@ -238,12 +322,14 @@ def main():
         pairs.append((cmd, out.replace(run + "/", "")))
     film = os.path.join(run, "nightfall.mp4")
     info = json.loads(pairs[-1][1])
+    info = info.get("output", info)
     poster = os.path.join(S, "poster.jpg")
     sh([FF, "-v", "error", "-y", "-i", film, "-frames:v", "1", "-q:v", "2", poster])
 
     # 3. stage frames
     frames = []  # (html, seconds)
-    done = ['<span class="cm"># agent: cut five public-domain time-lapses into a 10-second film with jy</span>\n']
+    goal = ("render it with 剪映's own engine" if native else "edit it with ffmpeg only")
+    done = [f'<span class="cm"># agent: cut five public-domain time-lapses into a film and {goal}</span>\n']
     prompt = '<span class="pr">❯ </span>'
 
     def term(extra="", cursor=True):
@@ -261,8 +347,11 @@ def main():
     o = info
     cap = (f'<span class="play"></span><span class="name">nightfall.mp4</span>'
            f'<span class="chip">{o["width"]}×{o["height"]}</span><span class="chip">{o["duration_s"]:.1f} s</span>'
-           f'<span class="chip">叠化 ×4</span><span class="chip">青橙 60%</span><span class="chip">{o["codec"]} · faststart</span>'
-           f'<span class="by">edited by <b>jy</b> · local ffmpeg engine</span>')
+           + ('<span class="chip">叠化 ×4</span><span class="chip">暗灰电影感</span><span class="chip">暗角</span>'
+              '<span class="chip">渐显入场</span><span class="by">rendered by <b>剪映</b> engine · via jy</span>'
+              if native else
+              f'<span class="chip">叠化 ×4</span><span class="chip">青橙 60%</span><span class="chip">{o["codec"]} · faststart</span>'
+              '<span class="by">edited by <b>jy</b> · local ffmpeg engine</span>'))
     poster_url = "file://" + poster
     n_tr = 14
     for i in range(1, n_tr + 1):
@@ -316,8 +405,10 @@ def main():
     gifsicle = shutil.which("gifsicle")
     if not gifsicle:
         raise SystemExit("gifsicle is required for the GIF (brew install gifsicle)")
-    f0, step = _dur(seg1), 2.6 - 0.6  # film start in the master; montage clip spacing
-    cuts = [0, f0 + 0.3] + [f0 + step * k + 0.3 for k in range(1, 5)] + [_dur(master)]
+    # film start in the master; shot spacing (剪映: junctions at SHOT·k; montage: dissolve midpoints)
+    f0 = _dur(seg1)
+    shot_cuts = [SHOT * k for k in range(1, 5)] if native else [2.0 * k + 0.3 for k in range(1, 5)]
+    cuts = [0, f0 + 0.3] + [f0 + c for c in shot_cuts] + [_dur(master)]
     chunks = []
     for i in range(len(cuts) - 1):
         ch = os.path.join(S, f"chunk{i}.gif")
