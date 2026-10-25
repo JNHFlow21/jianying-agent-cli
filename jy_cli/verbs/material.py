@@ -120,6 +120,42 @@ def effects_params(ctx, args):
     }
 
 
+def effects_cached(ctx, args):
+    """Materials really present in the local 剪映 cache, with paste-ready spec snippets."""
+    from .. import jianying_cache
+
+    data = jianying_cache.index(refresh=bool(args.refresh))
+    rows = data["items"]
+    if args.kind:
+        rows = [row for row in rows if row["kind"] == args.kind]
+    needle = str(args.search or "").strip().lower()
+    if needle:
+        rows = [row for row in rows if needle in row["name"].lower() or needle == row["resource_id"]]
+    counts = {}
+    for row in data["items"]:
+        counts[row["kind"]] = counts.get(row["kind"], 0) + 1
+    limited = rows[: args.limit] if args.limit else rows
+    items = []
+    for row in limited:
+        item = {key: row.get(key) for key in ("kind", "name", "resource_id", "status", "category", "vip")}
+        if row.get("animation_type"):
+            item["animation_type"] = row["animation_type"]
+        item["spec"] = jianying_cache.spec_snippet(row)
+        items.append(item)
+    return "readonly", {
+        "cache_root": data["cache_root"],
+        "packages": data["packages"],
+        "unnamed_packages": data["unnamed"],
+        "kind_counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
+        "spec_kinds": list(jianying_cache.SPEC_KINDS),
+        "matched": len(rows),
+        "returned": len(items),
+        "items": items,
+        "note": "只列本机剪映已下载的素材包（未缓存的 id 渲染时会被静默忽略）。spec 里也可以只写 name，"
+        "`jy draft build` 会按名字从缓存补全 resource_id 和 path；spec 为 null 的种类 draft build 还不支持。",
+    }
+
+
 def material_status(ctx, args):
     return "readonly", material.describe()
 
@@ -156,6 +192,20 @@ def register(r):
     search.add_argument("--kind", metavar="KIND")
     search.add_argument("--limit", type=int, default=20, metavar="N")
     r.bind(search, "effects search", effects_search)
+
+    cached = effects_sub.add_parser(
+        "cached", help="list materials actually downloaded in the local 剪映 cache, by name",
+        description="只读：扫描剪映本地素材缓存（Cache/effect、Cache/artistEffect），并从 ressdk_db 的"
+        "副本里解析中文名；每条带可直接粘进 `jy draft build --spec` 的片段。不打开剪映、不读草稿、"
+        "不写剪映目录（索引缓存在 ~/.cache/jy）。",
+    )
+    cached.add_argument("--kind", metavar="KIND",
+                        help="transition/filter/video_effect/text_effect/text_animation/"
+                        "text_template/face_beauty/…")
+    cached.add_argument("--search", metavar="NAME", help="substring of the Chinese name (or an exact id)")
+    cached.add_argument("--limit", type=int, default=50, metavar="N", help="0 = no limit")
+    cached.add_argument("--refresh", action="store_true", help="rebuild the name index now")
+    r.bind(cached, "effects cached", effects_cached)
 
     params = effects_sub.add_parser(
         "params", help="show legal parameter namespaces and their ranges",

@@ -2119,6 +2119,124 @@ else
 fi
 
 echo
+echo "== effects cached (synthetic 剪映 cache) + name resolution + relative --staging-dir"
+cat > "$WORK/cached_check.py" <<'PY'
+"""`jy effects cached` against a fake 剪映 cache, draft build by material name,
+and relative --staging-dir. Never touches a real 剪映 install."""
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+JY, WORK = sys.argv[1], Path(sys.argv[2])
+failures = []
+
+
+def check(name, cond, detail=""):
+    if not cond:
+        failures.append(f"{name}: {detail}")
+
+
+def run(args, env=None, cwd=None):
+    p = subprocess.run([JY, *args], capture_output=True, text=True, env=env, cwd=cwd)
+    return json.loads(p.stdout)
+
+
+root = WORK / "fake-jianying-cache"
+packages = {  # rid: (dir, md5, name, effect_type, category)
+    "7000000000000000019": ("effect", "a" * 32, "测试叠化", 19, "热门"),
+    "7000000000000000012": ("artistEffect", "b" * 32, "测试滤镜", 12, "电影"),
+    "7000000000000000007": ("effect", "c" * 32, "测试暗角", 7, "基础"),
+    "7000000000000000018": ("effect", "d" * 32, "测试渐显", 18, "入场"),
+    "7000000000000000099": ("effect", "e" * 32, "", 7, ""),  # cached but unnamed
+}
+items = []
+for rid, (sub, md5, name, etype, cat) in packages.items():
+    pkg = root / sub / rid / md5
+    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "config.json").write_text("{}", "utf-8")
+    if name:
+        items.append({"category_name": cat, "effects": [
+            {"id": rid, "effect_id": rid, "title": name, "effect_type": etype, "md5": md5,
+             "extra": "{\"is_vip\":false}"}]})
+db_dir = root / "ressdk_db" / "1"
+db_dir.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(str(db_dir / "rp.db"))
+conn.execute("CREATE TABLE http_cache (id INTEGER PRIMARY KEY, url TEXT, response_body TEXT, version TEXT)")
+conn.execute("INSERT INTO http_cache (url, response_body) VALUES (?, ?)",
+             ("/artist/v1/panel/get_panel_info_x", json.dumps({"data": {"categories": items}})))
+conn.commit()
+conn.close()
+db_before = (db_dir / "rp.db").stat().st_mtime_ns
+
+env = dict(os.environ, JY_JIANYING_CACHE=str(root))
+payload = run(["effects", "cached", "--limit", "0"], env=env)
+data = payload.get("data") or {}
+kinds = {it["kind"]: it for it in data.get("items") or []}
+check("cached ok", payload.get("ok") is True, str(payload.get("error"))[:200])
+check("cached reports root", data.get("cache_root") == str(root), str(data.get("cache_root")))
+check("cached finds 4 named", data.get("matched") == 4, str(data.get("matched")))
+check("cached counts unnamed", data.get("unnamed_packages") == 1, str(data.get("unnamed_packages")))
+check("kinds mapped", set(kinds) == {"transition", "filter", "video_effect", "text_animation"}, str(set(kinds)))
+check("status cached", all(it.get("status") == "cached" for it in data.get("items") or []), "")
+check("transition snippet", "clips[i].transition" in (kinds.get("transition") or {}).get("spec", {}), str(kinds.get("transition")))
+check("animation type from category", kinds.get("text_animation", {}).get("animation_type") == "in", str(kinds.get("text_animation")))
+check("filter snippet path", (kinds.get("filter") or {}).get("spec", {}).get("filters[]", {}).get("path", "").endswith("b" * 32), "")
+check("live db untouched", (db_dir / "rp.db").stat().st_mtime_ns == db_before, "rp.db modified")
+payload = run(["effects", "cached", "--kind", "filter", "--search", "滤镜"], env=env)
+check("kind+search filter", (payload.get("data") or {}).get("matched") == 1, str(payload.get("data"))[:200])
+payload = run(["effects", "cached"], env=dict(os.environ, JY_JIANYING_CACHE=str(WORK / "no-such-cache")))
+check("missing cache UNAVAILABLE", (payload.get("error") or {}).get("code") == "UNAVAILABLE", str(payload.get("error"))[:200])
+empty = WORK / "empty-jianying-cache"
+(empty / "effect").mkdir(parents=True, exist_ok=True)
+payload = run(["effects", "cached"], env=dict(os.environ, JY_JIANYING_CACHE=str(empty)))
+check("empty cache NOT_FOUND", (payload.get("error") or {}).get("code") == "NOT_FOUND", str(payload.get("error"))[:200])
+
+# draft build resolves names from the cache; relative --staging-dir is CWD-relative
+spec_dir = WORK / "byname"
+spec_dir.mkdir(exist_ok=True)
+spec = {"canvas": {"width": 640, "height": 360, "fps": 30},
+        "clips": [{"path": str(WORK / "a.mp4"), "start": 0, "duration": 1.0,
+                   "transition": {"name": "测试叠化", "duration": 0.3}},
+                  {"path": str(WORK / "b.mp4"), "start": 1.0, "duration": 1.0}],
+        "texts": [{"content": "名字", "start": 0, "duration": 1,
+                   "animations": [{"type": "in", "name": "测试渐显", "duration": 0.3}]}],
+        "filters": [{"name": "测试滤镜", "value": 0.5}],
+        "effects": [{"name": "测试暗角"}]}
+(spec_dir / "spec.json").write_text(json.dumps(spec, ensure_ascii=False), "utf-8")
+payload = run(["draft", "build", "--spec", "spec.json", "-o", "draft", "--staging-dir", "rel-staging", "--force"],
+              env=env, cwd=spec_dir)
+data = payload.get("data") or {}
+check("by-name build ok", payload.get("ok") is True, str(payload.get("error"))[:300])
+check("4 names resolved", len(data.get("materials_resolved") or []) == 4, str(data.get("materials_resolved"))[:300])
+check("relative staging under CWD", (spec_dir / "rel-staging").is_dir() and str(data.get("staging", {}).get("root")) == str((spec_dir / "rel-staging").resolve()),
+      str(data.get("staging", {}).get("root")))
+doc = json.loads((spec_dir / "draft" / "draft_info.json").read_text("utf-8")) if (spec_dir / "draft" / "draft_info.json").is_file() else {}
+trans = (doc.get("materials") or {}).get("transitions") or []
+check("transition id filled", bool(trans) and trans[0].get("resource_id") == "7000000000000000019", str(trans)[:200])
+bad = dict(spec, filters=[{"name": "不存在"}])
+(spec_dir / "bad.json").write_text(json.dumps(bad, ensure_ascii=False), "utf-8")
+payload = run(["draft", "build", "--spec", "bad.json", "-o", "bad", "--no-staging", "--force"], env=env, cwd=spec_dir)
+check("unknown name NOT_FOUND", (payload.get("error") or {}).get("code") == "NOT_FOUND", str(payload.get("error"))[:200])
+
+print(json.dumps({"ok": not failures, "failures": failures}, ensure_ascii=False))
+raise SystemExit(0 if not failures else 1)
+PY
+if cc_out="$("$PY" "$WORK/cached_check.py" "$JY" "$WORK" 2>&1)"; then
+    pass "effects cached + by-name draft build + relative staging [$(echo "$cc_out" | head -c 160)]"
+else
+    fail "effects cached checks" "$(echo "$cc_out" | tail -c 800)"
+fi
+REAL_JY_CACHE="$HOME/Movies/JianyingPro/User Data/Cache"
+if [[ -d "$REAL_JY_CACHE/effect" ]]; then
+    expect_ok "effects cached on the real 剪映 cache (read-only)" effects cached --limit 5
+else
+    skip "effects cached on a real 剪映 cache (none on this machine)"
+fi
+
+echo
 echo "----------------------------------------"
 printf 'smoke summary: %d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
 if [[ "$FAIL" -ne 0 ]]; then

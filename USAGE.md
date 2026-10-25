@@ -106,6 +106,7 @@ git clone https://github.com/JNHFlow21/jianying-agent-cli.git && cd jianying-age
 | `jy draft build --spec spec.json -o DIR` | 从时间线规格生成草稿工程（含 `.jy-spec.json` 记录，供降级重渲染） |
 | `jy render DIR -o out.mp4 [--async] [--on-entitlement fail\|local] [--preflight] [--focus-guard watch\|restore\|off]` | 调剪映原生导出器渲染草稿；带焦点守卫、冷启动重试、崩溃重发现、跨进程渲染锁 |
 | `jy effects list\|search\|params` | 剪映素材目录（内置 269 条：id / 中文名 / 类型 / 参数；可用 ~/.config/jy/effects_catalog.json 覆盖） |
+| `jy effects cached [--kind K] [--search NAME] [--limit N] [--refresh]` | **本机剪映缓存里真正已下载、能渲染的素材**：kind / 中文名 / resource_id / `status:"cached"` / 可直接粘进 spec 的片段（见 §9.2） |
 | `jy material status` | 素材图能力自检：哪些类型已证明能渲染、哪些未验证、字体路径 |
 | `jy material register DIR [--apply]` | 把草稿注册进剪映草稿面板（默认 dry-run，自动备份索引） |
 
@@ -231,6 +232,23 @@ jy render draft/ -o out.mp4 --async && jy jobs wait <id>   # 长任务
 - 美颜 → `materials.effects[] type=figure` + 视频 material 的 `is_set_beauty_mode`
 - 抠像 → `videos[].matting{flag:3,…}`（逐帧蒙版必须由剪映生成，jy 会明确报错而不是编造路径）
 
+### 9.2 按名字找素材（`jy effects cached`）
+
+剪映只会渲染**已下载到本地缓存**的素材包（`…/User Data/Cache/{effect,artistEffect}/<resource_id>/<md5>`），
+没缓存的 id 会被静默忽略。`jy effects cached` 只读地扫描这些包，再从 `Cache/ressdk_db/*/rp.db`
+（剪映缓存的面板列表）的**临时副本**里解析中文名——不原地打开剪映的数据库、不写剪映目录、不读任何草稿。
+结果按缓存目录和数据库的 size/mtime 记忆在 `~/.cache/jy/jianying_materials.json`（首次约 2–3 s，之后 <0.1 s）。
+
+- `--kind`：`transition` / `filter` / `video_effect` / `text_effect`（花字）/ `text_animation`（`animation_type` 取自入场/出场/循环分类）/ `text_template`，以及 spec 暂不支持的 `face_beauty`、`video_mask`、`matting_stroke`、`color_preset`、`text_glow`、`voice_change`、`other`（这些条目的 `spec` 为 `null`）。
+- 每条的 `spec` 是可直接粘贴的片段，键名指明位置：`clips[i].transition`、`filters[]`、`effects[]`、`texts[i].text_effect`、`texts[i].animations[]`、`texts[i].text_template`。
+- 剪映未安装/从未打开 → `UNAVAILABLE`；缓存里没有素材包 → `NOT_FOUND`（先在剪映里点开要用的素材让它下载）。`$JY_JIANYING_CACHE` 可改扫描目录。
+- `status` 目前恒为 `"cached"`，为以后的远程素材（未下载）预留。
+
+**spec 里可以只写名字**：`"transition":{"name":"叠化"}`、`"filters":[{"name":"暗灰电影感","value":0.6}]`、
+`"effects":[{"name":"暗角"}]`、`"animations":[{"type":"in","name":"渐显入场"}]`、`"text_effect":{"name":"…"}`。
+`jy draft build` 会从缓存补全 `resource_id` 和 `path`，并在 `data.materials_resolved[]` 里逐条报告；
+给了 `resource_id` 但没给 `path` 时也会补上 `path`。名字不存在 → `NOT_FOUND`（附可用名字），同名多个 id → `VALIDATION`（请改用 resource_id）。
+
 ## 10. 工程管理
 
 | 命令 | 说明 |
@@ -240,6 +258,6 @@ jy render draft/ -o out.mp4 --async && jy jobs wait <id>   # 长任务
 | `jy fonts [--check 名字]` | 枚举系统+剪映字体并校验，拼错即失败 |
 | `jy clean [--staging\|--assets\|--all] [--apply]` | `~/.cache/jy` 历史行为不变；`~/Movies` 下的 staging/assets **只有 `--apply` 才删** |
 
-**任意路径素材**：`draft build` 默认把 clip 源 hardlink/copy 到 `~/Movies/jy-staging/<hash>/` 并在草稿里引用 staging 路径，所以 `~/Downloads` 直接可用（TCC 保护路径会弹模态框把剪映卡死）。`--no-staging` 关闭，`--staging-dir` 改目录。
+**任意路径素材**：`draft build` 默认把 clip 源 hardlink/copy 到 `~/Movies/jy-staging/<hash>/` 并在草稿里引用 staging 路径，所以 `~/Downloads` 直接可用（TCC 保护路径会弹模态框把剪映卡死）。`--no-staging` 关闭，`--staging-dir` 改目录（相对路径按当前工作目录解析）。
 
 **多时间线迁移**：剪映打开过 jy 草稿后会把 `draft_info.json` 迁到 `Timelines/<uuid>/`；`jy` 自动解析（根 → `project.json` 的 `main_timeline_id` → 最新），并在 `data.draft.layout` 里报告 `single`/`multi-timeline`。

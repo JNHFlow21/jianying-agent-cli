@@ -85,6 +85,15 @@ jy render ./draft-out -o final.mp4 --async && jy jobs wait <job-id>
   `stickers`, `transitions` are supported — see `USAGE.md` §9. Look up ids with
   `jy effects search "<name>"`. Unknown keys fail with a suggestion.
 
+### Find 剪映 materials that will actually render
+
+Only packages already downloaded into 剪映's local cache render; an uncached id is silently ignored.
+`jy effects cached [--kind transition|filter|video_effect|text_effect|text_animation|text_template] [--search NAME]`
+lists them (read-only) with a paste-ready `spec` snippet each. In a spec you may give just the name —
+`"transition":{"name":"叠化"}`, `"filters":[{"name":"暗灰电影感","value":0.6}]` — and `jy draft build`
+fills `resource_id` + `path` from the cache (`data.materials_resolved`); an unknown or ambiguous name fails
+with the available choices. Need something not listed? Open it once in 剪映 so it downloads.
+
 ## Engine pitfalls
 
 - **剪映 must be running.** If not: `UNAVAILABLE` with "open 剪映 and retry". Do not spin.

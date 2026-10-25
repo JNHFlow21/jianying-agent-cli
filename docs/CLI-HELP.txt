@@ -928,18 +928,36 @@ options:
 
 usage: jy effects [-h] [--verbose] action ...
 
-剪映素材目录（离线）：剪映内置资源的 id 与中文名（可用 ~/.config/jy/effects_catalog.json 覆盖），外加 33 种 asset_type
-和可用的参数命名空间。不联网、不启动剪映。
+剪映素材目录（离线）：剪映内置资源的 id 与中文名（可用 ~/.config/jy/effects_catalog.json 覆盖），外加 33 种
+asset_type 和可用的参数命名空间。不联网、不启动剪映。
 
 positional arguments:
   action
     list      list catalog entries with per-kind counts
     search    search catalog entries by Chinese name or id
+    cached    list materials actually downloaded in the local 剪映 cache, by
+              name
     params    show legal parameter namespaces and their ranges
 
 options:
   -h, --help  show this help message and exit
   --verbose   stream ffmpeg logs to stderr
+
+## jy effects cached
+
+usage: jy effects cached [-h] [--kind KIND] [--search NAME] [--limit N]
+                         [--refresh]
+
+只读：扫描剪映本地素材缓存（Cache/effect、Cache/artistEffect），并从 ressdk_db 的副本里解析中文名；每条带可直接粘进
+`jy draft build --spec` 的片段。不打开剪映、不读草稿、不写剪映目录（索引缓存在 ~/.cache/jy）。
+
+options:
+  -h, --help     show this help message and exit
+  --kind KIND    transition/filter/video_effect/text_effect/text_animation/tex
+                 t_template/face_beauty/…
+  --search NAME  substring of the Chinese name (or an exact id)
+  --limit N      0 = no limit
+  --refresh      rebuild the name index now
 
 ## jy material
 

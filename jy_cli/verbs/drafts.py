@@ -23,6 +23,7 @@ from .. import draft as drafts
 from .. import jianying_commands
 from ..envelope import JyError
 from . import _draft_spec as draft_spec
+from .. import jianying_cache
 
 ROOT_ENV = "JY_DRAFT_ROOT"
 INDEX_NAME = "root_meta_info.json"
@@ -213,19 +214,29 @@ def draft_build(ctx, args):
     except (OSError, json.JSONDecodeError) as exc:
         raise JyError("VALIDATION", f"spec 不是合法 JSON：{args.spec}（{exc}）") from exc
 
+    # materials given by name (or without a cache path) -> resource_id + path from 剪映's cache
+    resolved = jianying_cache.resolve_spec(raw_spec)
     props = draft_spec.validate_spec(raw_spec, where="spec")
     effective_spec = spec_path
     staging = None
+    # relative --staging-dir is relative to the caller's CWD, not to the temp spec copy
+    staging_dir = Path(args.staging_dir).expanduser().resolve() if args.staging_dir else None
     with tempfile.TemporaryDirectory(prefix="jy-draft-spec-") as tmp_dir:
         if not getattr(args, "no_staging", False):
             staged_spec, staging = draft_spec.stage_clips(
                 raw_spec,
                 spec_path.parent,
-                root=Path(args.staging_dir).expanduser() if args.staging_dir else None,
+                root=staging_dir,
                 warnings=ctx.warnings,
             )
             effective_spec = Path(tmp_dir) / "spec.staged.json"
             effective_spec.write_text(json.dumps(staged_spec, ensure_ascii=False), "utf-8")
+        elif resolved:
+            for clip in raw_spec.get("clips") or []:  # keep relative clip paths valid
+                if isinstance(clip, dict) and clip.get("path") and not Path(clip["path"]).expanduser().is_absolute():
+                    clip["path"] = str((spec_path.parent / clip["path"]).resolve())
+            effective_spec = Path(tmp_dir) / "spec.resolved.json"
+            effective_spec.write_text(json.dumps(raw_spec, ensure_ascii=False), "utf-8")
         forwarded = type(args)(**vars(args))
         forwarded.spec = str(effective_spec)
         outcome, data = jianying_commands.draft_build(ctx, forwarded)
@@ -248,13 +259,14 @@ def draft_build(ctx, args):
     else:
         data["staging"] = {
             "enabled": True,
-            "root": str(draft_spec.staging_root()),
+            "root": str(staging_dir or draft_spec.staging_root()),
             "clips": staging,
             "total_bytes": sum(item.get("bytes") or 0 for item in staging),
             "linked": sum(1 for item in staging if item.get("linked")),
             "copied": sum(1 for item in staging if item.get("copied")),
         }
     data["clip_properties"] = patched or {"applied": 0, "skipped": False}
+    data["materials_resolved"] = resolved
     return outcome, data
 
 
